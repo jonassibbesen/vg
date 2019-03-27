@@ -257,17 +257,28 @@ int main_surject(int argc, char** argv) {
                              
                         exit(1);
                     }
-    
                
                     // Preprocess read to set metadata before surjection
                     set_metadata(src1);
                     set_metadata(src2);
-                    
+
+                    auto surjections_1 = surjector.surject(src1, path_names, subpath_global, false);
+                    auto surjections_2 = surjector.surject(src2, path_names, subpath_global, false);
+
+                    for (auto & surjection_1: surjections_1) {
+
+                        for (auto & surjection_2: surjections_2) {
+
+                            alignment_emitter->emit_pair(move(surjection_1), move(surjection_2));
+                        }
+                    }
+
                     // Surject and emit.
-                    alignment_emitter->emit_pair(surjector.surject(src1, path_names, subpath_global),
-                                                 surjector.surject(src2, path_names, subpath_global));
-                
+                    // alignment_emitter->emit_pair(surjector.surject(src1, path_names, subpath_global),
+                    //                              surjector.surject(src2, path_names, subpath_global));
+
                 });
+
             } else {
                 // We can just surject each Alignment by itself.
                 // TODO: We don't preserve order relationships (like primary/secondary).
@@ -277,8 +288,9 @@ int main_surject(int argc, char** argv) {
                     set_metadata(src);
                     
                     // Surject and emit the single read.
-                    alignment_emitter->emit_single(surjector.surject(src, path_names, subpath_global));
-                        
+                    // alignment_emitter->emit_single(surjector.surject(src, path_names, subpath_global));
+
+                    alignment_emitter->emit_mapped_single(surjector.surject(src, path_names, subpath_global, false));                        
                 });
             }
         });

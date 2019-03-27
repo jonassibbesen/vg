@@ -36,12 +36,12 @@ using namespace std;
         ///
         /// Optionally either allow softclips so that the alignment has a nonnegative score on
         /// the path or require the full-length alignment, possibly creating a negative score.
-        Alignment surject(const Alignment& source,
-                          const set<string>& path_names,
-                          string& path_name_out,
-                          int64_t& path_pos_out,
-                          bool& path_rev_out,
-                          bool allow_negative_scores = false) const;
+        // vector<Alignment> surject(const Alignment& source,
+        //                   const set<string>& path_names,
+        //                   string& path_name_out,
+        //                   int64_t& path_pos_out,
+        //                   bool& path_rev_out,
+        //                   bool allow_negative_scores = false) const;
                           
         /// Extract the portions of an alignment that are on a chosen set of
         /// paths and try to align realign the portions that are off of the
@@ -54,9 +54,9 @@ using namespace std;
         /// Optionally either allow softclips so that the alignment has a
         /// nonnegative score on the path or require the full-length alignment,
         /// possibly creating a negative score.
-        Alignment surject(const Alignment& source,
+        vector<Alignment> surject(const Alignment& source,
                           const set<string>& path_names,
-                          bool allow_negative_scores = false) const;
+                          bool allow_negative_scores = false, bool best_surjection_only = true) const;
         
         /// a local type that represents a read interval matched to a portion of the alignment path
         using path_chunk_t = pair<pair<string::const_iterator, string::const_iterator>, Path>;

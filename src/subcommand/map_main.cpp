@@ -729,12 +729,12 @@ int main_map(int argc, char** argv) {
         int tid = omp_get_thread_num();
         for (auto& aln : alns1) {
             // Surject each alignment of the first read in the pair and annotate with surjected path position
-            surjects1.push_back(surjector.surject(aln, path_names, surject_subpath_global));
+            surjects1.push_back(surjector.surject(aln, path_names, surject_subpath_global)[0]);
         }
         
         for (auto& aln : alns2) {
             // Surject each alignment of the second read in the pair, if any, and annotate with surjected path position
-            surjects2.push_back(surjector.surject(aln, path_names, surject_subpath_global));
+            surjects2.push_back(surjector.surject(aln, path_names, surject_subpath_global)[0]);
         }
         
         if (surjects2.empty()) {

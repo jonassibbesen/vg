@@ -19,30 +19,30 @@ using namespace std;
         }
     }
     
-    Alignment Surjector::surject(const Alignment& source, const set<string>& path_names,
-                                 bool allow_negative_scores) const {
+    vector<Alignment> Surjector::surject(const Alignment& source, const set<string>& path_names,
+                                 bool allow_negative_scores, bool best_surjection_only) const {
     
-        // Allocate the annotation info
-        string path_name_out;
-        int64_t path_pos_out;
-        bool path_rev_out;
+    //     // Allocate the annotation info
+    //     string path_name_out;
+    //     int64_t path_pos_out;
+    //     bool path_rev_out;
         
-        // Do the surjection
-        Alignment surjected = surject(source, path_names, path_name_out, path_pos_out, path_rev_out, allow_negative_scores);
+    //     // Do the surjection
+    //     Alignment surjected = surject(source, path_names, path_name_out, path_pos_out, path_rev_out, allow_negative_scores);
         
-        // Pack all the info into the refpos field
-        surjected.clear_refpos();
-        auto* pos = surjected.add_refpos();
-        pos->set_name(path_name_out);
-        pos->set_offset(path_pos_out);
-        pos->set_is_reverse(path_rev_out);
+    //     // Pack all the info into the refpos field
+    //     surjected.clear_refpos();
+    //     auto* pos = surjected.add_refpos();
+    //     pos->set_name(path_name_out);
+    //     pos->set_offset(path_pos_out);
+    //     pos->set_is_reverse(path_rev_out);
     
-        return surjected;
-    }
+    //     return surjected;
+    // }
     
-    Alignment Surjector::surject(const Alignment& source, const set<string>& path_names,
-                                 string& path_name_out, int64_t& path_pos_out, bool& path_rev_out,
-                                 bool allow_negative_scores) const {
+    // Alignment Surjector::surject(const Alignment& source, const set<string>& path_names,
+    //                              string& path_name_out, int64_t& path_pos_out, bool& path_rev_out,
+    //                              bool allow_negative_scores) const {
         
 #ifdef debug_anchored_surject
         cerr << "surjecting alignment: " << pb2json(source) << " onto paths ";
@@ -176,29 +176,65 @@ using namespace std;
             path_surjections[0] = make_null_alignment(source);
         }
         
-        // choose which path surjection was best
-        size_t best_path_rank;
-        int32_t score = numeric_limits<int32_t>::min();
-        for (const auto& surjection : path_surjections) {
-            if (surjection.second.score() >= score) {
-                score = surjection.second.score();
-                best_path_rank = surjection.first;
+        vector<Alignment> surjections;
+        surjections.reserve(path_surjections.size());
+
+        if (best_surjection_only) {
+
+            // choose which path surjection was best
+            size_t best_path_rank;
+            int32_t score = numeric_limits<int32_t>::min();
+            for (const auto& surjection : path_surjections) {
+                if (surjection.second.score() >= score) {
+                    score = surjection.second.score();
+                    best_path_rank = surjection.first;
+                }
+            }
+
+            // which path was it?
+            surjections.push_back(path_surjections[best_path_rank]);
+
+            string path_name_out = path_rank_to_name[best_path_rank];
+            int64_t path_pos_out;
+            bool path_rev_out;
+            
+            // find the position along the path
+            const xg::XGPath& best_xpath = xindex->get_path(path_name_out);
+            set_path_position(surjections.back(), best_path_rank, best_xpath, path_name_out, path_pos_out, path_rev_out, &oriented_occurrences_memo);
+    
+            surjections.back().clear_refpos();
+            auto* pos = surjections.back().add_refpos();
+            pos->set_name(path_name_out);
+            pos->set_offset(path_pos_out);
+            pos->set_is_reverse(path_rev_out);
+
+        } else {
+
+            for (const auto & surjection : path_surjections) {
+    
+                surjections.push_back(surjection.second);
+
+                string path_name_out = path_rank_to_name[surjection.first];
+                int64_t path_pos_out;
+                bool path_rev_out;
+                
+                // find the position along the path
+                const xg::XGPath& best_xpath = xindex->get_path(path_name_out);
+                set_path_position(surjections.back(), surjection.first, best_xpath, path_name_out, path_pos_out, path_rev_out, &oriented_occurrences_memo);
+        
+                surjections.back().clear_refpos();
+                auto* pos = surjections.back().add_refpos();
+                pos->set_name(path_name_out);
+                pos->set_offset(path_pos_out);
+                pos->set_is_reverse(path_rev_out);
             }
         }
-        
-        // which path was it?
-        path_name_out = path_rank_to_name[best_path_rank];
-        
-        Alignment& best_surjection = path_surjections[best_path_rank];
-        
-        // find the position along the path
-        const xg::XGPath& best_xpath = xindex->get_path(path_name_out);
-        set_path_position(best_surjection, best_path_rank, best_xpath, path_name_out, path_pos_out, path_rev_out, &oriented_occurrences_memo);
-        
-#ifdef debug_anchored_surject
-        cerr << "chose path " << path_name_out << " at position " << path_pos_out << (path_rev_out ? "-" : "+") << endl;
-#endif
-        return move(best_surjection);
+
+// #ifdef debug_anchored_surject
+//         cerr << "chose path " << path_name_out << " at position " << path_pos_out << (path_rev_out ? "-" : "+") << endl;
+// #endif
+
+        return surjections;
     }
     
     unordered_map<size_t, vector<Surjector::path_chunk_t>>
