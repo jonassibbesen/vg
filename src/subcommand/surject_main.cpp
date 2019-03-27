@@ -265,19 +265,22 @@ int main_surject(int argc, char** argv) {
                     auto surjections_1 = surjector.surject(src1, path_names, subpath_global, false);
                     auto surjections_2 = surjector.surject(src2, path_names, subpath_global, false);
 
+                    vector<Alignment> surjection_1_pairs;
+                    vector<Alignment> surjection_2_pairs;
+
                     for (auto & surjection_1: surjections_1) {
 
                         for (auto & surjection_2: surjections_2) {
 
                             if (surjection_1.refpos()[0].name() == surjection_2.refpos()[0].name()) {
 
-                                Alignment surjection_1_copy = surjection_1;
-                                Alignment surjection_2_copy = surjection_2;
-
-                                alignment_emitter->emit_pair(move(surjection_1_copy), move(surjection_2_copy));
+                                surjection_1_pairs.push_back(surjection_1);
+                                surjection_2_pairs.push_back(surjection_2);
                             }
                         }
                     }
+
+                    alignment_emitter->emit_mapped_pair(move(surjection_1_pairs), move(surjection_2_pairs));
 
                     // Surject and emit.
                     // alignment_emitter->emit_pair(surjector.surject(src1, path_names, subpath_global),
