@@ -212,6 +212,8 @@ int main_surject(int argc, char** argv) {
     // Count out threads
     int thread_count = get_thread_count();
 
+    vector<vector<Alignment> > surjection_thread_buffers(thread_count);
+
     if (input_format == "GAM") {
         get_input_file(file_name, [&](istream& in) {
             if (interleaved) {
@@ -299,10 +301,21 @@ int main_surject(int argc, char** argv) {
                     // Surject and emit the single read.
                     // alignment_emitter->emit_single(surjector.surject(src, path_names, subpath_global));
 
-                    alignment_emitter->emit_mapped_single(surjector.surject(src, path_names, subpath_global, false));                        
+                    for (auto & surjection: surjector.surject(src, path_names, subpath_global, false)) {
+
+                        surjection_thread_buffers[omp_get_thread_num()].emplace_back(move(surjection));
+                    }
+
+
+                    // alignment_emitter->emit_mapped_single(surjector.surject(src, path_names, subpath_global, false));                        
                 });
             }
         });
+
+        for (auto & buffer: surjection_thread_buffers) {
+
+            alignment_emitter->emit_mapped_single(move(buffer));
+        }
         
     } else {
         cerr << "[vg surject] Unimplemented input format " << input_format << endl;
