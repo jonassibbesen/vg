@@ -269,7 +269,13 @@ int main_surject(int argc, char** argv) {
 
                         for (auto & surjection_2: surjections_2) {
 
-                            alignment_emitter->emit_pair(move(surjection_1), move(surjection_2));
+                            if (surjection_1.refpos()[0].name() == surjection_2.refpos()[0].name()) {
+
+                                Alignment surjection_1_copy = surjection_1;
+                                Alignment surjection_2_copy = surjection_2;
+
+                                alignment_emitter->emit_pair(move(surjection_1_copy), move(surjection_2_copy));
+                            }
                         }
                     }
 
