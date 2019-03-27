@@ -306,6 +306,14 @@ int main_surject(int argc, char** argv) {
                         surjection_thread_buffers[omp_get_thread_num()].emplace_back(move(surjection));
                     }
 
+                    if (surjection_thread_buffers[omp_get_thread_num()].size() >= 1000) {
+
+                        alignment_emitter->emit_mapped_single(move(surjection_thread_buffers[omp_get_thread_num()]));
+
+                        surjection_thread_buffers[omp_get_thread_num()] = vector<Alignment>();
+                        surjection_thread_buffers[omp_get_thread_num()].reserve(1000);
+                    }
+
 
                     // alignment_emitter->emit_mapped_single(surjector.surject(src, path_names, subpath_global, false));                        
                 });
