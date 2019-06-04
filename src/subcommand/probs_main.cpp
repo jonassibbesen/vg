@@ -370,6 +370,21 @@ vector<AlignmentPath> get_paired_align_paths(const Alignment & alignment_1, cons
     return paired_align_paths;
 }
 
+double mapq_to_logprob_correct(const double mapq) {
+
+    return (prob_to_logprob(1 - phred_to_prob(mapq)));
+}
+
+void write_align_paths_logprobs(ostream * out_stream, const vector<AlignmentPath> & align_paths, const uint32_t frag_length_mean, const uint32_t frag_length_sd) {
+
+    assert(!align_paths.empty());
+
+    *out_stream << mapq_to_logprob_correct(align_paths.front().mapqs.first) << endl;
+    *out_stream << mapq_to_logprob_correct(align_paths.front().mapqs.second) << endl;
+
+    *out_stream << prob_to_logprob(normal_pdf<double>(align_paths.front().length, frag_length_mean, frag_length_sd)) << endl;
+}
+
 void help_probs(char** argv) {
     cerr << "\nusage: " << argv[0] << " probs [options] <graph.xg> <paths.gbwt> <alignments.gam(p)> > align_path_probs.txt" << endl
          << "options:" << endl
@@ -577,12 +592,13 @@ int32_t main_probs(int32_t argc, char** argv) {
 
                 cerr << bla << "  ||  ";
             } 
-
+            
             cerr << endl;
+
+            write_align_paths_logprobs(&cerr, paired_align_paths, frag_length_mean, frag_length_sd);
         }
 
         break;
-// normal_pdf<float>(align_path.length, frag_length_mean, frag_length_sd)
     }
  
     double time9 = gcsa::readTimer();
