@@ -43,6 +43,57 @@ struct AlignmentPath {
     }
 };
 
+bool operator<(const vector<gbwt::size_type> & lhs, const vector<gbwt::size_type> & rhs) { 
+
+    if (lhs.size() != rhs.size()) {
+
+        return (lhs.size() < rhs.size());    
+    } 
+
+    for (size_t i = 0; i < lhs.size(); ++i) {
+
+        if (lhs.at(i) != rhs.at(i)) {
+
+            return (lhs.at(i) < rhs.at(i));    
+        }         
+    }
+
+    return false;
+}
+
+bool operator==(const AlignmentPath & lhs, const AlignmentPath & rhs) { 
+
+    return (lhs.path_ids == rhs.path_ids && lhs.length == rhs.length && lhs.scores == rhs.scores && lhs.mapqs == rhs.mapqs);
+}
+
+bool operator!=(const AlignmentPath & lhs, const AlignmentPath & rhs) { 
+
+    return !(lhs== rhs);
+}
+
+bool operator<(const AlignmentPath & lhs, const AlignmentPath & rhs) { 
+
+    return (lhs.path_ids < rhs.path_ids || lhs.length < rhs.length || lhs.scores < rhs.scores || lhs.mapqs < rhs.mapqs);
+}
+
+bool AlignmentPathsSorter(const vector<AlignmentPath> & align_paths_1, const vector<AlignmentPath> & align_paths_2) {
+
+    if (align_paths_1.size() != align_paths_2.size()) {
+
+        return (align_paths_1.size() < align_paths_2.size());    
+    } 
+
+    for (size_t i = 0; i < align_paths_1.size(); ++i) {
+
+        if (align_paths_1.at(i) != align_paths_2.at(i)) {
+
+            return (align_paths_1.at(i) < align_paths_2.at(i));    
+        }         
+    }   
+
+    return false;     
+}
+
 ostream& operator<<(ostream& os, const AlignmentPath & align_path) {
 
     for (auto & id: align_path.path_ids) {
@@ -68,7 +119,7 @@ PathClusters find_path_clusters(const unordered_map<int32_t, unordered_set<int32
     PathClusters path_clusters;
     path_clusters.path_to_cluster_index = vector<uint32_t>(num_paths, -1);
 
-    for (uint32_t i = 0; i < num_paths; ++i) {
+    for (size_t i = 0; i < num_paths; ++i) {
 
         if (path_clusters.path_to_cluster_index.at(i) == -1) {
 
@@ -82,7 +133,7 @@ PathClusters find_path_clusters(const unordered_map<int32_t, unordered_set<int32
                 auto cur_path = search_queue.front();
 
                 bool is_first_visit = (path_clusters.path_to_cluster_index.at(cur_path) == -1);
-                assert(is_first_visit or path_clusters.path_to_cluster_index.at(cur_path) == path_clusters.cluster_to_path_index.size() - 1);
+                assert(is_first_visit || path_clusters.path_to_cluster_index.at(cur_path) == path_clusters.cluster_to_path_index.size() - 1);
 
                 path_clusters.path_to_cluster_index.at(cur_path) = path_clusters.cluster_to_path_index.size() - 1;
                 
@@ -231,7 +282,7 @@ void find_paired_align_paths(vector<AlignmentPath> * paired_align_paths, const A
                 ++end_alignment_nodes_it;
             }
 
-            if (!cur_paired_align_path.path.empty() and cur_paired_align_path.length <= max_pair_distance) {
+            if (!cur_paired_align_path.path.empty() && cur_paired_align_path.length <= max_pair_distance) {
 
                 paired_align_paths->emplace_back(cur_paired_align_path);
 
@@ -400,7 +451,7 @@ int32_t main_probs(int32_t argc, char** argv) {
 
         vg::io::for_each_interleaved_pair_parallel<Alignment>(in, [&](Alignment& alignment_1, Alignment& alignment_2) {
 
-            if (alignment_1.has_path() and alignment_2.has_path()) {
+            if (alignment_1.has_path() && alignment_2.has_path()) {
 
                 auto paired_align_paths = get_paired_align_paths(alignment_1, alignment_2, *paths_index, *xg_index, frag_length_mean + 10 * frag_length_sd);
 
@@ -450,7 +501,7 @@ int32_t main_probs(int32_t argc, char** argv) {
     double time5 = gcsa::readTimer();
     cerr << "Found paired alignment paths " << time5 - time3 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
 
-    for (uint32_t i = 1; i < connected_paths_threads.size(); ++i) {
+    for (size_t i = 1; i < connected_paths_threads.size(); ++i) {
 
         for (auto & connected_path_clusters: connected_paths_threads.at(i)) {
 
@@ -483,7 +534,15 @@ int32_t main_probs(int32_t argc, char** argv) {
     double time7 = gcsa::readTimer();
     cerr << "Clustered paired alignment paths " << time7 - time6 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
 
-    for (uint32_t i = 0; i < clustered_paired_align_paths.size(); ++i) {
+    for (auto & paired_align_path: clustered_paired_align_paths) {
+
+        sort(paired_align_path.begin(), paired_align_path.end(), AlignmentPathsSorter);
+    }
+
+    double time8 = gcsa::readTimer();
+    cerr << "Sorted paired alignment paths " << time8 - time7 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
+
+    for (size_t i = 0; i < clustered_paired_align_paths.size(); ++i) {
 
         cout << "#";
         for (auto & path_id: path_clusters.cluster_to_path_index.at(i)) {
@@ -492,15 +551,15 @@ int32_t main_probs(int32_t argc, char** argv) {
         }
         cout << endl;
 
-//         for (auto & paired_align_paths: clustered_paired_align_paths) {
+        // for (auto & paired_align_paths: clustered_paired_align_paths.at(i)) {
 
 //             sum
 // normal_pdf<float>(align_path.length, frag_length_mean, frag_length_sd)
 //         }
     }
  
-    double time8 = gcsa::readTimer();
-    cerr << "Wrote output " << time8 - time7 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
+    double time9 = gcsa::readTimer();
+    cerr << "Wrote output " << time9 - time8 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
 
     return 0;
 }
