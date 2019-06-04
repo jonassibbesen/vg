@@ -20,7 +20,7 @@ using namespace std;
 using namespace vg;
 using namespace vg::subcommand;
 
-//#define debug
+#define debug
 
 const double frag_length_mean = 277;
 const double frag_length_sd = 43;
@@ -31,11 +31,31 @@ struct AlignmentPath {
     gbwt::SearchState path; 
     vector<gbwt::size_type> path_ids;
     
-    int32_t score;
     int32_t length;
 
-    AlignmentPath() : score(0), length(0) {}
+    pair<int32_t, int32_t> scores;
+    pair<int32_t, int32_t> mapqs;
+
+    AlignmentPath() : length(0) {
+
+        scores = make_pair(0,0);
+        mapqs = make_pair(0,0);
+    }
 };
+
+ostream& operator<<(ostream& os, const AlignmentPath & align_path) {
+
+    for (auto & id: align_path.path_ids) {
+
+        os << id << " ";
+    }
+
+    os << "| " << align_path.length;
+    os << " | (" << align_path.scores.first << ", " << align_path.scores.second << ")";
+    os << " | (" << align_path.mapqs.first << ", " << align_path.mapqs.second << ")";
+
+    return os;
+}
 
 struct PathClusters {
 
@@ -138,8 +158,9 @@ AlignmentPath get_align_path(const Alignment & alignment, const gbwt::GBWT & pat
 
     AlignmentPath align_path;
     align_path.path = paths_index.find(mapping_to_gbwt(*mapping_it));
-    align_path.score = alignment.score();
     align_path.length = mapping_to_length(*mapping_it);
+    align_path.scores.first = alignment.score();
+    align_path.mapqs.first = alignment.mapping_quality();
 
     ++mapping_it;
 
@@ -200,7 +221,8 @@ void find_paired_align_paths(vector<AlignmentPath> * paired_align_paths, const A
                 paired_align_paths->emplace_back(cur_paired_align_path);
 
                 paired_align_paths->back().path_ids = paths_index.locate(paired_align_paths->back().path);                                
-                paired_align_paths->back().score += end_alignment.score();                
+                paired_align_paths->back().scores.second = end_alignment.score();
+                paired_align_paths->back().mapqs.second = end_alignment.mapping_quality();           
             }
 
             paired_align_path_queue.pop();
@@ -229,8 +251,9 @@ void find_paired_align_paths(vector<AlignmentPath> * paired_align_paths, const A
 
                     AlignmentPath new_paired_align_path;
                     new_paired_align_path.path = extended_path;
-                    new_paired_align_path.score = cur_paired_align_path.score;
                     new_paired_align_path.length = cur_paired_align_path.length + xg_index.node_length(gbwt::Node::id(out_edges_it->first));
+                    new_paired_align_path.scores = cur_paired_align_path.scores;
+                    new_paired_align_path.mapqs = cur_paired_align_path.mapqs;
 
                     paired_align_path_queue.push(new_paired_align_path);
                 }
@@ -364,45 +387,21 @@ int32_t main_probs(int32_t argc, char** argv) {
 
             if (alignment_1.has_path() and alignment_2.has_path()) {
 
-#ifdef debug
-                cerr << pb2json(alignment_1) << "\n";
-                cerr << pb2json(alignment_2) << "\n";        
-
-                auto align_path_1_fw = get_align_path_with_ids(alignment_1, *paths_index);
-                auto align_path_1_rc = get_align_path_with_ids(reverse_complement_alignment(alignment_1, [&xg_index](const int64_t node_id) { return xg_index->node_length(node_id); };), *paths_index);
-                auto align_path_2_fw = get_align_path_with_ids(alignment_2, *paths_index);
-                auto align_path_2_rc = get_align_path_with_ids(reverse_complement_alignment(alignment_2, [&xg_index](const int64_t node_id) { return xg_index->node_length(node_id); };), *paths_index);
-
-                for (auto & id: align_path_1_fw.path_ids) {
-                    cerr << id << " ";
-                }
-                cerr << "| " << align_path_1_fw.length << " | " << align_path_1_fw.score << endl;
-
-                for (auto & id: align_path_1_rc.path_ids) {
-                    cerr << id << " ";
-                }
-                cerr << "| " << align_path_1_rc.length << " | " << align_path_1_rc.score << endl;
-
-                for (auto & id: align_path_2_fw.path_ids) {
-                    cerr << id << " ";
-                }
-                cerr << "| " << align_path_2_fw.length << " | " << align_path_2_fw.score << endl;
-
-                for (auto & id: align_path_2_rc.path_ids) {
-                    cerr << id << " ";
-                }
-                cerr << "| " << align_path_2_rc.length << " | " << align_path_2_rc.score << endl;
-#endif 
-
                 auto paired_align_paths = get_paired_align_paths(alignment_1, alignment_2, *paths_index, *xg_index, frag_length_mean + 10 * frag_length_sd);
 
-#ifdef debug            
+#ifdef debug
+                cerr << endl;
+                cerr << pb2json(alignment_1) << endl;
+                cerr << pb2json(alignment_2) << endl;
+
+                cerr << get_align_path_with_ids(alignment_1, *paths_index) << endl;
+                cerr << get_align_path_with_ids(reverse_complement_alignment(alignment_1, [&xg_index](const int64_t node_id) { return xg_index->node_length(node_id); }), *paths_index) << endl;
+                cerr << get_align_path_with_ids(alignment_2, *paths_index) << endl;
+                cerr << get_align_path_with_ids(reverse_complement_alignment(alignment_2, [&xg_index](const int64_t node_id) { return xg_index->node_length(node_id); }), *paths_index) << endl;
+          
                 for (auto & align_path: paired_align_paths) {
 
-                    for (auto & id: align_path.path_ids) {
-                        cerr << id << " ";
-                    }
-                    cerr << "| " << align_path.length << " | " << normal_pdf<float>(align_path.length, frag_length_mean, frag_length_sd) << " | " << align_path.score << endl;
+                    cerr << align_path << endl;
                 }
 #endif 
 
@@ -424,7 +423,7 @@ int32_t main_probs(int32_t argc, char** argv) {
 
                     paired_align_paths_threads.at(omp_get_thread_num()).emplace_back(paired_align_paths);
 
-                    if (paired_align_paths_threads.at(omp_get_thread_num()).size() % 100000 == 0) {
+                    if (paired_align_paths_threads.at(omp_get_thread_num()).size() % 1000000 == 0) {
 
                         cerr << omp_get_thread_num() << ": " << paired_align_paths_threads.at(omp_get_thread_num()).size() << endl;        
                     }
@@ -477,6 +476,12 @@ int32_t main_probs(int32_t argc, char** argv) {
             cout << " " << path_id;
         }
         cout << endl;
+
+//         for (auto & paired_align_paths: clustered_paired_align_paths) {
+
+//             sum
+// normal_pdf<float>(align_path.length, frag_length_mean, frag_length_sd)
+//         }
     }
  
     double time8 = gcsa::readTimer();
