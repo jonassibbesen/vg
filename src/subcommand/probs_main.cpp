@@ -549,10 +549,14 @@ int32_t main_probs(int32_t argc, char** argv) {
     double time7 = gcsa::readTimer();
     cerr << "Clustered paired alignment paths " << time7 - time6 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
 
-    #pragma omp for
-    for (size_t i = 0; i < clustered_paired_align_paths.size(); ++i) {
+    #pragma omp parallel
+    { 
+    
+        #pragma omp for
+        for (size_t i = 0; i < clustered_paired_align_paths.size(); ++i) {
 
-        sort(clustered_paired_align_paths.at(i).begin(), clustered_paired_align_paths.at(i).end(), AlignmentPathsSorter);
+            sort(clustered_paired_align_paths.at(i).begin(), clustered_paired_align_paths.at(i).end(), AlignmentPathsSorter);
+        }
     }
 
     double time8 = gcsa::readTimer();
