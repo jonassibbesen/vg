@@ -43,37 +43,47 @@ struct AlignmentPath {
     }
 };
 
-bool operator<(const vector<gbwt::size_type> & lhs, const vector<gbwt::size_type> & rhs) { 
-
-    if (lhs.size() != rhs.size()) {
-
-        return (lhs.size() < rhs.size());    
-    } 
-
-    for (size_t i = 0; i < lhs.size(); ++i) {
-
-        if (lhs.at(i) != rhs.at(i)) {
-
-            return (lhs.at(i) < rhs.at(i));    
-        }         
-    }
-
-    return false;
-}
-
 bool operator==(const AlignmentPath & lhs, const AlignmentPath & rhs) { 
 
-    return (lhs.path_ids == rhs.path_ids && lhs.length == rhs.length && lhs.scores == rhs.scores && lhs.mapqs == rhs.mapqs);
+    return (lhs.length == rhs.length && lhs.scores == rhs.scores && lhs.mapqs == rhs.mapqs && lhs.path_ids == rhs.path_ids);
 }
 
 bool operator!=(const AlignmentPath & lhs, const AlignmentPath & rhs) { 
 
-    return !(lhs== rhs);
+    return !(lhs == rhs);
 }
 
 bool operator<(const AlignmentPath & lhs, const AlignmentPath & rhs) { 
 
-    return (lhs.path_ids < rhs.path_ids || lhs.length < rhs.length || lhs.scores < rhs.scores || lhs.mapqs < rhs.mapqs);
+    if (lhs.length != rhs.length) {
+
+        return (lhs.length < rhs.length);
+    }
+
+    if (lhs.scores != rhs.scores) {
+
+        return (lhs.scores < rhs.scores);
+    }
+
+    if (lhs.mapqs != rhs.mapqs) {
+
+        return (lhs.mapqs < rhs.mapqs);
+    }
+
+    if (lhs.path_ids.size() != rhs.path_ids.size()) {
+
+        return (lhs.path_ids.size() < rhs.path_ids.size());    
+    } 
+
+    for (size_t i = 0; i < lhs.path_ids.size(); ++i) {
+
+        if (lhs.path_ids.at(i) != rhs.path_ids.at(i)) {
+
+            return (lhs.path_ids.at(i) < rhs.path_ids.at(i));    
+        }         
+    }
+
+    return false;
 }
 
 bool AlignmentPathsSorter(const vector<AlignmentPath> & align_paths_1, const vector<AlignmentPath> & align_paths_2) {
@@ -82,6 +92,11 @@ bool AlignmentPathsSorter(const vector<AlignmentPath> & align_paths_1, const vec
 
         return (align_paths_1.size() < align_paths_2.size());    
     } 
+
+    if (align_paths_1.size() == 1) {
+
+        return (align_paths_1.front() < align_paths_2.front());            
+    }
 
     for (size_t i = 0; i < align_paths_1.size(); ++i) {
 
@@ -534,9 +549,10 @@ int32_t main_probs(int32_t argc, char** argv) {
     double time7 = gcsa::readTimer();
     cerr << "Clustered paired alignment paths " << time7 - time6 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
 
-    for (auto & paired_align_path: clustered_paired_align_paths) {
+    #pragma omp for
+    for (size_t i = 0; i < clustered_paired_align_paths.size(); ++i) {
 
-        sort(paired_align_path.begin(), paired_align_path.end(), AlignmentPathsSorter);
+        sort(clustered_paired_align_paths.at(i).begin(), clustered_paired_align_paths.at(i).end(), AlignmentPathsSorter);
     }
 
     double time8 = gcsa::readTimer();
@@ -544,18 +560,25 @@ int32_t main_probs(int32_t argc, char** argv) {
 
     for (size_t i = 0; i < clustered_paired_align_paths.size(); ++i) {
 
-        cout << "#";
+        cerr << "#";
         for (auto & path_id: path_clusters.cluster_to_path_index.at(i)) {
 
-            cout << " " << path_id;
+            cerr << " " << path_id;
         }
-        cout << endl;
+        cerr << endl;
 
-        // for (auto & paired_align_paths: clustered_paired_align_paths.at(i)) {
+        for (auto & paired_align_paths: clustered_paired_align_paths.at(i)) {
 
-//             sum
+            for (auto & bla: paired_align_paths) {
+
+                cerr << bla << "  ||  ";
+            } 
+
+            cerr << endl;
+        }
+
+        break;
 // normal_pdf<float>(align_path.length, frag_length_mean, frag_length_sd)
-//         }
     }
  
     double time9 = gcsa::readTimer();
