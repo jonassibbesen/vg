@@ -20,7 +20,7 @@ using namespace std;
 using namespace vg;
 using namespace vg::subcommand;
 
-#define debug
+//#define debug
 
 const double frag_length_mean = 277;
 const double frag_length_sd = 43;
@@ -182,6 +182,19 @@ AlignmentPath get_align_path_with_ids(const Alignment & alignment, const gbwt::G
     return align_path;
 }
 
+vector<gbwt::node_type> path_to_gbwt_nodes(const Path & path) {
+
+    vector<gbwt::node_type> gbwt_nodes;
+    gbwt_nodes.reserve(path.mapping_size());
+
+    for (auto & mapping: path.mapping()) {
+
+        gbwt_nodes.emplace_back(mapping_to_gbwt(mapping));
+    }
+
+    return gbwt_nodes;
+}
+
 void find_paired_align_paths(vector<AlignmentPath> * paired_align_paths, const AlignmentPath & start_align_path, const Alignment & end_alignment, const gbwt::GBWT & paths_index, const xg::XG & xg_index, const int32_t max_pair_distance) {
 
     assert(!start_align_path.path.empty());
@@ -190,7 +203,8 @@ void find_paired_align_paths(vector<AlignmentPath> * paired_align_paths, const A
     paired_align_path_queue.push(start_align_path);
 
     assert(end_alignment.path().mapping_size() > 0);
-    auto end_alignment_start = mapping_to_gbwt(end_alignment.path().mapping(0));
+
+    auto end_alignment_nodes = path_to_gbwt_nodes(end_alignment.path());
 
     // Perform depth-first path extension.
     while (!paired_align_path_queue.empty()) {
@@ -203,17 +217,18 @@ void find_paired_align_paths(vector<AlignmentPath> * paired_align_paths, const A
             continue;                
         }
 
+        auto end_alignment_nodes_it = find(end_alignment_nodes.begin(), end_alignment_nodes.end(), cur_paired_align_path.path.node);
+
         // Stop current extension if end node is reached.
-        if (cur_paired_align_path.path.node == end_alignment_start) {
+        if (end_alignment_nodes_it != end_alignment_nodes.end()) {
 
-            auto mapping_it = end_alignment.path().mapping().cbegin();
-            ++mapping_it;
+            ++end_alignment_nodes_it;
 
-            while (mapping_it != end_alignment.path().mapping().cend()) {
+            while (end_alignment_nodes_it != end_alignment_nodes.end()) {
 
-                cur_paired_align_path.path = paths_index.extend(cur_paired_align_path.path, mapping_to_gbwt(*mapping_it));
-                cur_paired_align_path.length += xg_index.node_length(mapping_it->position().node_id());
-                ++mapping_it;
+                cur_paired_align_path.path = paths_index.extend(cur_paired_align_path.path, *end_alignment_nodes_it);
+                cur_paired_align_path.length += xg_index.node_length(gbwt::Node::id(*end_alignment_nodes_it));
+                ++end_alignment_nodes_it;
             }
 
             if (!cur_paired_align_path.path.empty() and cur_paired_align_path.length <= max_pair_distance) {
