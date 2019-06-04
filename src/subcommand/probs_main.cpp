@@ -11,6 +11,7 @@
 
 #include "../gbwt_helper.hpp"
 #include "../types.hpp"
+#include "../alignment.hpp"
  
 #include <vg/io/vpkg.hpp>
 #include <vg/io/stream.hpp>
@@ -19,48 +20,64 @@ using namespace std;
 using namespace vg;
 using namespace vg::subcommand;
 
-const double indel_prob = prob_to_logprob(0.0001);
-const bool use_score = false; 
+//#define debug
 
 const double frag_length_mean = 277;
 const double frag_length_sd = 43;
 
-typedef pair<vector<gbwt::size_type>, int32_t> fragment_path_t;
 
-//#define debug
+struct AlignmentPath {
 
+    gbwt::SearchState path; 
+    vector<gbwt::size_type> path_ids;
+    
+    int32_t score;
+    int32_t length;
 
-pair<unordered_map<uint32_t, uint32_t>, vector<vector<uint32_t> > > find_connected_components(const unordered_map<int32_t, unordered_set<int32_t> > & connected_paths, const int32_t num_paths) {
+    AlignmentPath() : score(0), length(0) {}
+};
 
-    unordered_map<uint32_t, uint32_t> connected_path_components_1;
-    vector<vector<uint32_t> > connected_path_components_2;
+struct PathClusters {
+
+    vector<uint32_t> path_to_cluster_index;
+    vector<vector<uint32_t> > cluster_to_path_index;
+};
+
+PathClusters find_path_clusters(const unordered_map<int32_t, unordered_set<int32_t> > & connected_paths, const int32_t num_paths) {
+
+    PathClusters path_clusters;
+    path_clusters.path_to_cluster_index = vector<uint32_t>(num_paths, -1);
 
     for (uint32_t i = 0; i < num_paths; ++i) {
 
-        if (connected_path_components_1.count(i) == 0) {
+        if (path_clusters.path_to_cluster_index.at(i) == -1) {
 
             std::queue<int32_t> search_queue;
             search_queue.push(i);
 
-            connected_path_components_2.emplace_back(vector<uint32_t>());
+            path_clusters.cluster_to_path_index.emplace_back(vector<uint32_t>());
 
             while (!search_queue.empty()) {
 
-                auto connected_path_components_1_it = connected_path_components_1.emplace(search_queue.front(), connected_path_components_2.size() - 1);
-                assert(connected_path_components_1_it.first->second == connected_path_components_2.size() - 1);
+                auto cur_path = search_queue.front();
+
+                bool is_first_visit = (path_clusters.path_to_cluster_index.at(cur_path) == -1);
+                assert(is_first_visit or path_clusters.path_to_cluster_index.at(cur_path) == path_clusters.cluster_to_path_index.size() - 1);
+
+                path_clusters.path_to_cluster_index.at(cur_path) = path_clusters.cluster_to_path_index.size() - 1;
                 
-                if (connected_path_components_1_it.second) {
+                if (is_first_visit) {
 
-                    connected_path_components_2.back().emplace_back(search_queue.front());
-                    auto out_edges_it = connected_paths.find(search_queue.front());
+                    path_clusters.cluster_to_path_index.back().emplace_back(cur_path);
+                    auto connected_paths_it = connected_paths.find(cur_path);
 
-                    if (out_edges_it != connected_paths.end()) {
+                    if (connected_paths_it != connected_paths.end()) {
 
-                        for (auto & out_edge: out_edges_it->second) {
+                        for (auto & path: connected_paths_it->second) {
 
-                            if (connected_path_components_1.count(out_edge) == 0) {
+                            if (path_clusters.path_to_cluster_index.at(path) == -1) {
 
-                                search_queue.push(out_edge);
+                                search_queue.push(path);
                             }
                         }
                     }
@@ -69,16 +86,16 @@ pair<unordered_map<uint32_t, uint32_t>, vector<vector<uint32_t> > > find_connect
                 search_queue.pop();
             }
 
-            sort(connected_path_components_2.back().begin(), connected_path_components_2.back().end());
+            sort(path_clusters.cluster_to_path_index.back().begin(), path_clusters.cluster_to_path_index.back().end());
         }
     }
 
-    return make_pair(connected_path_components_1, connected_path_components_2);
+    return path_clusters;
 }
 
-double calc_read_prob(const Alignment & align, const vector<double> & quality_match_probs, const vector<double> & quality_mismatch_probs) {
+double calc_read_prob(const Alignment & align, const vector<double> & quality_match_probs, const vector<double> & quality_mismatch_probs, const double indel_prob) {
 
-    double read_path_prob = 0;
+    double align_path_prob = 0;
 
     auto & base_qualities = align.quality();
     int32_t cur_pos = 0;
@@ -91,168 +108,168 @@ double calc_read_prob(const Alignment & align, const vector<double> & quality_ma
 
                 for (int32_t i = cur_pos; i < cur_pos + edit.from_length(); ++i) {
 
-                    read_path_prob += quality_match_probs.at(int32_t(base_qualities.at(i)));
+                    align_path_prob += quality_match_probs.at(int32_t(base_qualities.at(i)));
                 }
 
             } else if (edit_is_sub(edit)) {
 
                 for (int32_t i = cur_pos; i < cur_pos + edit.from_length(); ++i) {
 
-                    read_path_prob += quality_mismatch_probs.at(int32_t(base_qualities.at(i)));
+                    align_path_prob += quality_mismatch_probs.at(int32_t(base_qualities.at(i)));
                 }
             
             } else if (edit_is_insertion(edit)) {
 
-                read_path_prob += edit.to_length() * indel_prob;
+                align_path_prob += edit.to_length() * indel_prob;
 
             } else if (edit_is_deletion(edit)) {
 
-                read_path_prob += edit.from_length() * indel_prob;
+                align_path_prob += edit.from_length() * indel_prob;
             }
         }
     } 
 
-    return read_path_prob;
+    return align_path_prob;
 }
 
-pair<gbwt::SearchState, int32_t> get_read_paths_search(const Path & read_path, const gbwt::GBWT & paths_index) {
+AlignmentPath get_align_path(const Alignment & alignment, const gbwt::GBWT & paths_index) {
             
-    auto mapping_it = read_path.mapping().cbegin();
-    
-    gbwt::SearchState read_path_search = paths_index.find(mapping_to_gbwt(*mapping_it));
-    int32_t read_path_length = mapping_to_length(*mapping_it);
-    
+    auto mapping_it = alignment.path().mapping().cbegin();
+
+    AlignmentPath align_path;
+    align_path.path = paths_index.find(mapping_to_gbwt(*mapping_it));
+    align_path.score = alignment.score();
+    align_path.length = mapping_to_length(*mapping_it);
+
     ++mapping_it;
 
-    while (mapping_it != read_path.mapping().cend()) {
+    while (mapping_it != alignment.path().mapping().cend()) {
 
-        read_path_search = paths_index.extend(read_path_search, mapping_to_gbwt(*mapping_it));
-        read_path_length += mapping_to_length(*mapping_it);
+        align_path.path = paths_index.extend(align_path.path, mapping_to_gbwt(*mapping_it));
+        align_path.length += mapping_to_length(*mapping_it);
         ++mapping_it;
     }
 
-    return make_pair(read_path_search, read_path_length);
+    return align_path;
 }
 
-pair<vector<gbwt::size_type>, int32_t> get_read_path_ids(const Path & read_path, const gbwt::GBWT & paths_index) {
+AlignmentPath get_align_path_with_ids(const Alignment & alignment, const gbwt::GBWT & paths_index) {
 
-    auto read_paths_search = get_read_paths_search(read_path, paths_index);
-    return make_pair(paths_index.locate(read_paths_search.first), read_paths_search.second);
+    auto align_path = get_align_path(alignment, paths_index);
+    align_path.path_ids = paths_index.locate(align_path.path);
+
+    return align_path;
 }
 
-void find_fragment_paths(vector<pair<vector<gbwt::size_type>, int32_t> > * fragment_paths, const pair<gbwt::SearchState, int32_t> & start_search, const Path & end_read_path, const gbwt::GBWT & paths_index, const xg::XG & xg_index, const int32_t max_pair_distance) {
+void find_paired_align_paths(vector<AlignmentPath> * paired_align_paths, const AlignmentPath & start_align_path, const Alignment & end_alignment, const gbwt::GBWT & paths_index, const xg::XG & xg_index, const int32_t max_pair_distance) {
 
-    assert(!start_search.first.empty());
+    assert(!start_align_path.path.empty());
 
-    std::queue<pair<gbwt::SearchState, int32_t> > fragment_paths_queue;
-    fragment_paths_queue.push(start_search);
+    std::queue<AlignmentPath> paired_align_path_queue;
+    paired_align_path_queue.push(start_align_path);
 
-    assert(end_read_path.mapping_size() > 0);
-    auto end_read_path_start = mapping_to_gbwt(end_read_path.mapping(0));
+    assert(end_alignment.path().mapping_size() > 0);
+    auto end_alignment_start = mapping_to_gbwt(end_alignment.path().mapping(0));
 
     // Perform depth-first path extension.
-    while (!fragment_paths_queue.empty()) {
+    while (!paired_align_path_queue.empty()) {
 
-        auto & cur_fragment_path_search = fragment_paths_queue.front();
+        auto & cur_paired_align_path = paired_align_path_queue.front();
 
-        // 
-        if (cur_fragment_path_search.second > max_pair_distance) {
+        if (cur_paired_align_path.length > max_pair_distance) {
 
-            fragment_paths_queue.pop();
+            paired_align_path_queue.pop();
             continue;                
         }
 
         // Stop current extension if end node is reached.
-        if (cur_fragment_path_search.first.node == end_read_path_start) {
+        if (cur_paired_align_path.path.node == end_alignment_start) {
 
-            auto mapping_it = end_read_path.mapping().cbegin();
+            auto mapping_it = end_alignment.path().mapping().cbegin();
             ++mapping_it;
 
-            while (mapping_it != end_read_path.mapping().cend()) {
+            while (mapping_it != end_alignment.path().mapping().cend()) {
 
-                cur_fragment_path_search.second += xg_index.node_length(mapping_it->position().node_id()); 
-                cur_fragment_path_search.first = paths_index.extend(cur_fragment_path_search.first, mapping_to_gbwt(*mapping_it));
+                cur_paired_align_path.path = paths_index.extend(cur_paired_align_path.path, mapping_to_gbwt(*mapping_it));
+                cur_paired_align_path.length += xg_index.node_length(mapping_it->position().node_id());
                 ++mapping_it;
             }
 
-            if (!cur_fragment_path_search.first.empty() and cur_fragment_path_search.second <= max_pair_distance) {
-    
-                fragment_paths->emplace_back(paths_index.locate(cur_fragment_path_search.first), cur_fragment_path_search.second);
+            if (!cur_paired_align_path.path.empty() and cur_paired_align_path.length <= max_pair_distance) {
+
+                paired_align_paths->emplace_back(cur_paired_align_path);
+
+                paired_align_paths->back().path_ids = paths_index.locate(paired_align_paths->back().path);                                
+                paired_align_paths->back().score += end_alignment.score();                
             }
 
-            fragment_paths_queue.pop();
+            paired_align_path_queue.pop();
             continue;            
         }
         
-        auto out_edges = paths_index.edges(cur_fragment_path_search.first.node);
+        auto out_edges = paths_index.edges(cur_paired_align_path.path.node);
 
         // End current extension if no outgoing edges exist.
         if (out_edges.empty()) {
 
-            fragment_paths_queue.pop();
+            paired_align_path_queue.pop();
             continue;
         }
 
         auto out_edges_it = out_edges.begin(); 
-        ++out_edges_it;
 
         while (out_edges_it != out_edges.end()) {
 
             if (out_edges_it->first != gbwt::ENDMARKER) {
 
-                auto extended_search = paths_index.extend(cur_fragment_path_search.first, out_edges_it->first);
+                auto extended_path = paths_index.extend(cur_paired_align_path.path, out_edges_it->first);
 
                 // Add new extension to queue if not empty (path found).
-                if (!extended_search.empty()) { 
+                if (!extended_path.empty()) { 
 
-                    fragment_paths_queue.push(make_pair(extended_search, cur_fragment_path_search.second + xg_index.node_length(gbwt::Node::id(out_edges_it->first))));
+                    AlignmentPath new_paired_align_path;
+                    new_paired_align_path.path = extended_path;
+                    new_paired_align_path.score = cur_paired_align_path.score;
+                    new_paired_align_path.length = cur_paired_align_path.length + xg_index.node_length(gbwt::Node::id(out_edges_it->first));
+
+                    paired_align_path_queue.push(new_paired_align_path);
                 }
             }
 
             ++out_edges_it;
         }
 
-        if (out_edges.begin()->first != gbwt::ENDMARKER) {
-
-            cur_fragment_path_search.second += xg_index.node_length(gbwt::Node::id(out_edges.begin()->first)); 
-            cur_fragment_path_search.first = paths_index.extend(cur_fragment_path_search.first, out_edges.begin()->first);
-        
-            // End current extension if empty (no path found). 
-            if (cur_fragment_path_search.first.empty()) { fragment_paths_queue.pop(); }
-        
-        } else {
-
-            fragment_paths_queue.pop();
-        }
+        paired_align_path_queue.pop();
     }
 }
 
-vector<fragment_path_t> get_fragment_paths_ids(const Path & read_path_1, const Path & read_path_2, const gbwt::GBWT & paths_index, const xg::XG & xg_index, const int32_t max_pair_distance) {
+vector<AlignmentPath> get_paired_align_paths(const Alignment & alignment_1, const Alignment & alignment_2, const gbwt::GBWT & paths_index, const xg::XG & xg_index, const int32_t max_pair_distance) {
 
-    vector<pair<vector<gbwt::size_type>, int32_t> > fragment_paths;
+    vector<AlignmentPath> paired_align_paths;
 
     function<size_t(const int64_t)> node_length_func = [&xg_index](const int64_t node_id) { return xg_index.node_length(node_id); };
 
-    auto read_paths_1 = get_read_paths_search(read_path_1, paths_index);
-    if (!read_paths_1.first.empty()) {
+    auto align_path_1 = get_align_path(alignment_1, paths_index);
+    if (!align_path_1.path.empty()) {
 
-        const Path read_path_2_rc = reverse_complement_path(read_path_2, node_length_func);
-        find_fragment_paths(&fragment_paths, read_paths_1, read_path_2_rc, paths_index, xg_index, max_pair_distance);
+        const Alignment alignment_2_rc = reverse_complement_alignment(alignment_2, node_length_func);
+        find_paired_align_paths(&paired_align_paths, align_path_1, alignment_2_rc, paths_index, xg_index, max_pair_distance);
     }
 
-    auto read_paths_2 = get_read_paths_search(read_path_2, paths_index);
-    if (!read_paths_2.first.empty()) {
+    auto align_path_2 = get_align_path(alignment_2, paths_index);
+    if (!align_path_2.path.empty()) {
 
-        const Path read_path_1_rc = reverse_complement_path(read_path_1, node_length_func);
-        find_fragment_paths(&fragment_paths, read_paths_2, read_path_1_rc, paths_index, xg_index, max_pair_distance);
+        const Alignment alignment_1_rc = reverse_complement_alignment(alignment_1, node_length_func);
+        find_paired_align_paths(&paired_align_paths, align_path_2, alignment_1_rc, paths_index, xg_index, max_pair_distance);
     }
 
-    return fragment_paths;
+    return paired_align_paths;
 }
 
 void help_probs(char** argv) {
-    cerr << "\nusage: " << argv[0] << " probs [options] <graph.xg> <paths.gbwt> <reads.gam(p)> > read_path_probs.txt" << endl
+    cerr << "\nusage: " << argv[0] << " probs [options] <graph.xg> <paths.gbwt> <alignments.gam(p)> > align_path_probs.txt" << endl
          << "options:" << endl
+         << "    -m, --multipath            input is multipath alignment format (GAMP)" << endl
          << "    -t, --threads INT          number of compute threads to use" << endl
          << "    -p, --progress             show progress" << endl
          << "    -h, --help                 print help message" << endl
@@ -266,6 +283,7 @@ int32_t main_probs(int32_t argc, char** argv) {
         return 1;
     }
     
+    bool is_multipath = false;
     int32_t num_threads = 1;
     bool show_progress = false;
 
@@ -275,14 +293,15 @@ int32_t main_probs(int32_t argc, char** argv) {
     while (true) {
         static struct option long_options[] =
             {
-                {"threads",  no_argument, 0, 't'},
-                {"progress",  no_argument, 0, 'p'},
+                {"multipath", no_argument, 0, 'm'},
+                {"threads", no_argument, 0, 't'},
+                {"progress", no_argument, 0, 'p'},
                 {"help", no_argument, 0, 'h'},
                 {0, 0, 0, 0}
             };
 
         int32_t option_index = 0;
-        c = getopt_long(argc, argv, "t:ph?", long_options, &option_index);
+        c = getopt_long(argc, argv, "mt:ph?", long_options, &option_index);
 
         /* Detect the end of the options. */
         if (c == -1)
@@ -291,9 +310,12 @@ int32_t main_probs(int32_t argc, char** argv) {
         switch (c)
         {
 
+        case 'm':
+            is_multipath = true;
+            break;
+
         case 't':
             num_threads = parse<int>(optarg);
-            omp_set_num_threads(num_threads);
             break;
             
         case 'p':
@@ -317,6 +339,7 @@ int32_t main_probs(int32_t argc, char** argv) {
     }
 
     assert(num_threads > 0);
+    omp_set_num_threads(num_threads);
 
     double time1 = gcsa::readTimer();
 
@@ -330,117 +353,95 @@ int32_t main_probs(int32_t argc, char** argv) {
     double time3 = gcsa::readTimer();
     cerr << "Load GBWT " << time3 - time2 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
 
-    auto num_paths = paths_index->metadata.haplotype_count;
-    cerr << num_paths << endl;
-
-    vector<int32_t> out_data;
-
-    vector<double> quality_match_probs;
-    quality_match_probs.reserve(61);
-
-    vector<double> quality_mismatch_probs;
-    quality_mismatch_probs.reserve(61);
-
-    for (double i = 0; i < 61; ++i) {
-
-        quality_match_probs.emplace_back(prob_to_logprob(1 - pow(10, -1*i/10)));
-        quality_mismatch_probs.emplace_back(prob_to_logprob(pow(10, -1*i/10) / 3));
-    }
-
-    function<size_t(const int64_t)> node_length_func = [&xg_index](const int64_t node_id) { return xg_index->node_length(node_id); };
-
-    int num_fragments = 0;
+    const auto num_paths = paths_index->metadata.haplotype_count;
 
     vector<unordered_map<int32_t, unordered_set<int32_t> > > connected_paths_threads(num_threads);
-    vector<vector<vector<fragment_path_t> > > all_fragment_paths_threads(num_threads);
-
-    double time4 = gcsa::readTimer();
-    cerr << "Init structures " << time4 - time3 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
+    vector<vector<vector<AlignmentPath> > > paired_align_paths_threads(num_threads);
 
     get_input_file(optind, argc, argv, [&](istream& in) {
 
-        vg::io::for_each_interleaved_pair_parallel<Alignment>(in, [&](Alignment& align_1, Alignment& align_2) {
+        vg::io::for_each_interleaved_pair_parallel<Alignment>(in, [&](Alignment& alignment_1, Alignment& alignment_2) {
 
-            if (align_1.has_path() and align_2.has_path()) {
+            if (alignment_1.has_path() and alignment_2.has_path()) {
 
 #ifdef debug
-                cerr << pb2json(align_1) << "\n";
-                cerr << pb2json(align_2) << "\n";        
+                cerr << pb2json(alignment_1) << "\n";
+                cerr << pb2json(alignment_2) << "\n";        
 
-                auto read_paths_1_fw = get_read_path_ids(align_1.path(), *paths_index);
-                auto read_paths_1_rc = get_read_path_ids(reverse_complement_path(align_1.path(), node_length_func), *paths_index);
-                auto read_paths_2_fw = get_read_path_ids(align_2.path(), *paths_index);
-                auto read_paths_2_rc = get_read_path_ids(reverse_complement_path(align_2.path(), node_length_func), *paths_index);
+                auto align_path_1_fw = get_align_path_with_ids(alignment_1, *paths_index);
+                auto align_path_1_rc = get_align_path_with_ids(reverse_complement_alignment(alignment_1, [&xg_index](const int64_t node_id) { return xg_index->node_length(node_id); };), *paths_index);
+                auto align_path_2_fw = get_align_path_with_ids(alignment_2, *paths_index);
+                auto align_path_2_rc = get_align_path_with_ids(reverse_complement_alignment(alignment_2, [&xg_index](const int64_t node_id) { return xg_index->node_length(node_id); };), *paths_index);
 
-                for (auto & bla: read_paths_1_fw.first) {
-                    cerr << bla << " ";
+                for (auto & id: align_path_1_fw.path_ids) {
+                    cerr << id << " ";
                 }
-                cerr << "| " << read_paths_1_fw.second << endl; 
-                for (auto & bla: read_paths_1_rc.first) {
-                    cerr << bla << " ";
-                }
-                cerr << "| " << read_paths_1_rc.second << endl; 
+                cerr << "| " << align_path_1_fw.length << " | " << align_path_1_fw.score << endl;
 
-                for (auto & bla: read_paths_2_fw.first) {
-                    cerr << bla << " ";
+                for (auto & id: align_path_1_rc.path_ids) {
+                    cerr << id << " ";
                 }
-                cerr << "| " << read_paths_2_fw.second << endl; 
-                for (auto & bla: read_paths_2_rc.first) {
-                    cerr << bla << " ";
+                cerr << "| " << align_path_1_rc.length << " | " << align_path_1_rc.score << endl;
+
+                for (auto & id: align_path_2_fw.path_ids) {
+                    cerr << id << " ";
                 }
-                cerr << "| " << read_paths_2_rc.second << endl; 
+                cerr << "| " << align_path_2_fw.length << " | " << align_path_2_fw.score << endl;
+
+                for (auto & id: align_path_2_rc.path_ids) {
+                    cerr << id << " ";
+                }
+                cerr << "| " << align_path_2_rc.length << " | " << align_path_2_rc.score << endl;
 #endif 
 
-                auto fragment_paths = get_fragment_paths_ids(align_1.path(), align_2.path(), *paths_index, *xg_index, frag_length_mean + 10 * frag_length_sd);
+                auto paired_align_paths = get_paired_align_paths(alignment_1, alignment_2, *paths_index, *xg_index, frag_length_mean + 10 * frag_length_sd);
 
 #ifdef debug            
-                for (auto & bla: fragment_paths) {
-                    for (auto & bla2: bla.first) {
-                        cerr << bla2 << " ";
+                for (auto & align_path: paired_align_paths) {
+
+                    for (auto & id: align_path.path_ids) {
+                        cerr << id << " ";
                     }
-                    cerr << "| " << bla.second << " | " << normal_pdf<float>(bla.second, frag_length_mean, frag_length_sd) << endl; 
+                    cerr << "| " << align_path.length << " | " << normal_pdf<float>(align_path.length, frag_length_mean, frag_length_sd) << " | " << align_path.score << endl;
                 }
 #endif 
 
-                if (!fragment_paths.empty()) {
+                if (!paired_align_paths.empty()) {
 
-                    auto anchor_path = fragment_paths.front().first.front();
+                    auto anchor_path_id = paired_align_paths.front().path_ids.front();
 
-                    for (auto & fragment_path: fragment_paths) {
+                    for (auto & align_path: paired_align_paths) {
 
-                        for (uint32_t i = 0; i < fragment_path.first.size(); ++i) {
+                        for (auto & path_id: align_path.path_ids) {
 
-                            if (anchor_path != fragment_path.first.at(i)) {
+                            if (anchor_path_id != path_id) {
 
-                                connected_paths_threads.at(omp_get_thread_num())[anchor_path].emplace(fragment_path.first.at(i));
-                                connected_paths_threads.at(omp_get_thread_num())[fragment_path.first.at(i)].emplace(anchor_path);
+                                connected_paths_threads.at(omp_get_thread_num())[anchor_path_id].emplace(path_id);
+                                connected_paths_threads.at(omp_get_thread_num())[path_id].emplace(anchor_path_id);
                             }
                         }
                     }
 
-                    all_fragment_paths_threads.at(omp_get_thread_num()).emplace_back(fragment_paths);
+                    paired_align_paths_threads.at(omp_get_thread_num()).emplace_back(paired_align_paths);
 
-                    if (all_fragment_paths_threads.at(omp_get_thread_num()).size() % 100000 == 0) {
+                    if (paired_align_paths_threads.at(omp_get_thread_num()).size() % 100000 == 0) {
 
-                        cerr << omp_get_thread_num() << ": " << all_fragment_paths_threads.at(omp_get_thread_num()).size() << endl;        
+                        cerr << omp_get_thread_num() << ": " << paired_align_paths_threads.at(omp_get_thread_num()).size() << endl;        
                     }
                 }
-
-                // auto read_prob_1 = calc_read_prob(align_1, quality_match_probs, quality_mismatch_probs);
-                // auto read_prob_2 = calc_read_prob(align_2, quality_match_probs, quality_mismatch_probs);
             }
         });
     });
 
     double time5 = gcsa::readTimer();
-    cerr << "Found paths " << time5 - time4 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
+    cerr << "Found paired alignment paths " << time5 - time3 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
 
     for (uint32_t i = 1; i < connected_paths_threads.size(); ++i) {
 
-        for (auto & connected_paths: connected_paths_threads.at(i)) {
+        for (auto & connected_path_clusters: connected_paths_threads.at(i)) {
 
-            auto connected_paths_threads_it = connected_paths_threads.front().emplace(connected_paths.first, unordered_set<int32_t>());
-            for (auto & paths: connected_paths.second) {
+            auto connected_paths_threads_it = connected_paths_threads.front().emplace(connected_path_clusters.first, unordered_set<int32_t>());
+            for (auto & paths: connected_path_clusters.second) {
 
                 connected_paths_threads_it.first->second.emplace(paths);
             }
@@ -448,41 +449,38 @@ int32_t main_probs(int32_t argc, char** argv) {
     }
 
     double time6 = gcsa::readTimer();
-    cerr << "Merged threads " << time6 - time5 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
+    cerr << "Merged connected path threads " << time6 - time5 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
 
-    auto connected_path_components = find_connected_components(connected_paths_threads.front(), num_paths);
-
-    cerr << connected_path_components.first.size() << endl;
-    cerr << connected_path_components.second.size() << endl;
+    auto path_clusters = find_path_clusters(connected_paths_threads.front(), num_paths);
 
     double time62 = gcsa::readTimer();
-    cerr << "Found components " << time62 - time6 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
+    cerr << "Found path clusters " << time62 - time6 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
  
-    vector<vector<vector<fragment_path_t> > > clustered_fragment_paths(connected_path_components.second.size());
+    vector<vector<vector<AlignmentPath> > > clustered_paired_align_paths(path_clusters.cluster_to_path_index.size());
 
-    for (auto & all_fragment_paths: all_fragment_paths_threads) {
+    for (auto & paired_align_paths: paired_align_paths_threads) {
 
-        for (auto & fragment_paths: all_fragment_paths) {
+        for (auto & align_path: paired_align_paths) {
 
-            clustered_fragment_paths.at(connected_path_components.first.at(fragment_paths.front().first.front())).push_back(move(fragment_paths));
+            clustered_paired_align_paths.at(path_clusters.path_to_cluster_index.at(align_path.front().path_ids.front())).push_back(move(align_path));
         }
     }
 
     double time7 = gcsa::readTimer();
-    cerr << "Cluster fragment " << time7 - time6 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
+    cerr << "Clustered paired alignment paths " << time7 - time6 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
 
-    for (uint32_t i = 0; i < clustered_fragment_paths.size(); ++i) {
+    for (uint32_t i = 0; i < clustered_paired_align_paths.size(); ++i) {
 
         cout << "#";
-        for (auto & connected_path: connected_path_components.second.at(i)) {
+        for (auto & path_id: path_clusters.cluster_to_path_index.at(i)) {
 
-            cout << " " << connected_path;
+            cout << " " << path_id;
         }
         cout << endl;
     }
  
     double time8 = gcsa::readTimer();
-    cerr << "Wrote out " << time8 - time7 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
+    cerr << "Wrote output " << time8 - time7 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
 
     return 0;
 }
