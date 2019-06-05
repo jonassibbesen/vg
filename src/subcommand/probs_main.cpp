@@ -427,16 +427,29 @@ pair<double, vector<double> > calculate_paired_path_probs(const vector<Alignment
     }
 
     return make_pair(map_prob, paired_path_probs);
-}
+} 
 
 bool is_align_paths_prob_identical(const vector<AlignmentPath> & align_paths_1, const vector<AlignmentPath> & align_paths_2) {
 
-    if (align_paths_1.size() == 1 && align_paths_2.size() == 1) {
+    if (align_paths_1.size() == align_paths_2.size()) {
 
-        return (align_paths_1.front().path_ids == align_paths_2.front().path_ids && align_paths_1.front().mapqs == align_paths_2.front().mapqs);
-    }
+        if (align_paths_1.size() == 1) {
 
-    return (align_paths_1 == align_paths_2);
+            return (align_paths_1.front().path_ids == align_paths_2.front().path_ids &&align_paths_1.front().mapqs == align_paths_2.front().mapqs);
+        }
+
+        for (size_t i = 0; i < align_paths_1.size(); i++) {
+
+            if (align_paths_1.at(i).path_ids != align_paths_2.at(i).path_ids || align_paths_1.at(i).length != align_paths_2.at(i).length || align_paths_1.at(i).mapqs != align_paths_2.at(i).mapqs) {
+
+                return false;
+            }
+        }
+
+        return true;
+    } 
+
+    return false;
 }
 
 void help_probs(char** argv) {
@@ -633,6 +646,13 @@ int32_t main_probs(int32_t argc, char** argv) {
 
     for (size_t i = 0; i < clustered_paired_align_paths.size(); ++i) {
 
+        vector<vector<AlignmentPath> > & paired_align_paths = clustered_paired_align_paths.at(i);
+
+        if (paired_align_paths.empty()) {
+
+            continue;
+        }
+
         unordered_map<uint32_t, uint32_t> clustered_path_index;
 
         cout << "#\nx 0";
@@ -642,13 +662,6 @@ int32_t main_probs(int32_t argc, char** argv) {
             cout << " " << path_id + 1;
         }
         cout << endl;
-
-        vector<vector<AlignmentPath> > & paired_align_paths = clustered_paired_align_paths.at(i);
-
-        if (paired_align_paths.empty()) {
-
-            continue;
-        }
 
         int32_t num_paired_paths = 1;
         auto paired_path_prob = calculate_paired_path_probs(paired_align_paths.front(), clustered_path_index, frag_length_mean, frag_length_sd);
