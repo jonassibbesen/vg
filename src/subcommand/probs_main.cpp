@@ -45,7 +45,7 @@ struct AlignmentPath {
 
 bool operator==(const AlignmentPath & lhs, const AlignmentPath & rhs) { 
 
-    return (lhs.length == rhs.length && lhs.scores == rhs.scores && lhs.mapqs == rhs.mapqs && lhs.path_ids == rhs.path_ids);
+    return (lhs.path_ids == rhs.path_ids && lhs.length == rhs.length && lhs.scores == rhs.scores && lhs.mapqs == rhs.mapqs);
 }
 
 bool operator!=(const AlignmentPath & lhs, const AlignmentPath & rhs) { 
@@ -54,21 +54,6 @@ bool operator!=(const AlignmentPath & lhs, const AlignmentPath & rhs) {
 }
 
 bool operator<(const AlignmentPath & lhs, const AlignmentPath & rhs) { 
-
-    if (lhs.length != rhs.length) {
-
-        return (lhs.length < rhs.length);
-    }
-
-    if (lhs.scores != rhs.scores) {
-
-        return (lhs.scores < rhs.scores);
-    }
-
-    if (lhs.mapqs != rhs.mapqs) {
-
-        return (lhs.mapqs < rhs.mapqs);
-    }
 
     if (lhs.path_ids.size() != rhs.path_ids.size()) {
 
@@ -81,6 +66,21 @@ bool operator<(const AlignmentPath & lhs, const AlignmentPath & rhs) {
 
             return (lhs.path_ids.at(i) < rhs.path_ids.at(i));    
         }         
+    }
+
+    if (lhs.mapqs != rhs.mapqs) {
+
+        return (lhs.mapqs < rhs.mapqs);
+    }
+ 
+    if (lhs.length != rhs.length) {
+
+        return (lhs.length < rhs.length);
+    }
+
+    if (lhs.scores != rhs.scores) {
+
+        return (lhs.scores < rhs.scores);
     }
 
     return false;
@@ -370,19 +370,73 @@ vector<AlignmentPath> get_paired_align_paths(const Alignment & alignment_1, cons
     return paired_align_paths;
 }
 
-double mapq_to_logprob_correct(const double mapq) {
-
-    return (prob_to_logprob(1 - phred_to_prob(mapq)));
-}
-
-void write_align_paths_logprobs(ostream * out_stream, const vector<AlignmentPath> & align_paths, const uint32_t frag_length_mean, const uint32_t frag_length_sd) {
+pair<double, vector<double> > calculate_paired_path_probs(const vector<AlignmentPath> & align_paths, const unordered_map<uint32_t, uint32_t> & clustered_path_index, const uint32_t frag_length_mean, const uint32_t frag_length_sd) {
 
     assert(!align_paths.empty());
 
-    *out_stream << mapq_to_logprob_correct(align_paths.front().mapqs.first) << endl;
-    *out_stream << mapq_to_logprob_correct(align_paths.front().mapqs.second) << endl;
+    double map_prob = 1;
 
-    *out_stream << prob_to_logprob(normal_pdf<double>(align_paths.front().length, frag_length_mean, frag_length_sd)) << endl;
+    if (align_paths.front().mapqs.first > 0 && align_paths.front().mapqs.second > 0) {
+
+        map_prob = 1 - (1 - phred_to_prob(align_paths.front().mapqs.first)) * (1 - phred_to_prob(align_paths.front().mapqs.second));
+    
+    } else {
+
+        return make_pair(map_prob, vector<double>(clustered_path_index.size(), 0));        
+    }
+
+    vector<double> align_paths_probs;
+    align_paths_probs.reserve(align_paths.size());
+
+    if (align_paths.size() == 1) {
+
+        align_paths_probs.emplace_back(1 - map_prob);
+    
+    } else {
+
+        double sum_scores = 0;
+
+        for (auto & align_path: align_paths) {
+
+            sum_scores += align_path.scores.first + align_path.scores.second;
+        }
+
+        double sum_probs = 0;
+
+        for (auto & align_path: align_paths) {
+
+            align_paths_probs.emplace_back((align_path.scores.first + align_path.scores.second) / sum_scores * normal_pdf<double>(align_path.length, frag_length_mean, frag_length_sd));
+            sum_probs += align_paths_probs.back();
+        }
+
+        for (auto & probs: align_paths_probs) {
+
+            probs /= sum_probs;
+            probs *= (1 - map_prob);
+        }
+    }
+
+    vector<double> paired_path_probs(clustered_path_index.size(), 0);
+
+    for (size_t i = 0; i < align_paths.size(); ++i) {
+
+        for (auto & path: align_paths.at(i).path_ids) {
+
+            paired_path_probs.at(clustered_path_index.at(path)) = align_paths_probs.at(i) / align_paths.at(i).path_ids.size();
+        }
+    }
+
+    return make_pair(map_prob, paired_path_probs);
+}
+
+bool is_align_paths_prob_identical(const vector<AlignmentPath> & align_paths_1, const vector<AlignmentPath> & align_paths_2) {
+
+    if (align_paths_1.size() == 1 && align_paths_2.size() == 1) {
+
+        return (align_paths_1.front().path_ids == align_paths_2.front().path_ids && align_paths_1.front().mapqs == align_paths_2.front().mapqs);
+    }
+
+    return (align_paths_1 == align_paths_2);
 }
 
 void help_probs(char** argv) {
@@ -481,7 +535,7 @@ int32_t main_probs(int32_t argc, char** argv) {
 
         vg::io::for_each_interleaved_pair_parallel<Alignment>(in, [&](Alignment& alignment_1, Alignment& alignment_2) {
 
-            if (alignment_1.has_path() && alignment_2.has_path()) {
+            if (alignment_1.mapping_quality() > 0 && alignment_2.mapping_quality() > 0) {
 
                 auto paired_align_paths = get_paired_align_paths(alignment_1, alignment_2, *paths_index, *xg_index, frag_length_mean + 10 * frag_length_sd);
 
@@ -579,26 +633,52 @@ int32_t main_probs(int32_t argc, char** argv) {
 
     for (size_t i = 0; i < clustered_paired_align_paths.size(); ++i) {
 
-        cerr << "#";
+        unordered_map<uint32_t, uint32_t> clustered_path_index;
+
+        cout << "#\n0";
         for (auto & path_id: path_clusters.cluster_to_path_index.at(i)) {
 
-            cerr << " " << path_id;
+            assert(clustered_path_index.emplace(path_id, clustered_path_index.size()).second);
+            cout << " " << path_id + 1;
         }
-        cerr << endl;
+        cout << endl;
 
-        for (auto & paired_align_paths: clustered_paired_align_paths.at(i)) {
+        vector<vector<AlignmentPath> > & paired_align_paths = clustered_paired_align_paths.at(i);
 
-            for (auto & bla: paired_align_paths) {
+        if (paired_align_paths.empty()) {
 
-                cerr << bla << "  ||  ";
-            } 
+            continue;
+        }
+
+        int32_t num_paired_paths = 1;
+        auto paired_path_prob = calculate_paired_path_probs(paired_align_paths.front(), clustered_path_index, frag_length_mean, frag_length_sd);
+
+        for (size_t j = 1; j < paired_align_paths.size(); ++j) {
+
+            if (is_align_paths_prob_identical(paired_align_paths.at(j - 1), paired_align_paths.at(j))) {
+
+                num_paired_paths++;
             
-            cerr << endl;
+            } else {
 
-            write_align_paths_logprobs(&cerr, paired_align_paths, frag_length_mean, frag_length_sd);
+                cout << num_paired_paths << " " << paired_path_prob.first;
+                for (auto & prob: paired_path_prob.second) {
+
+                    cout << " " << prob;
+                }
+                cout << endl;
+
+                num_paired_paths = 1;
+                paired_path_prob = calculate_paired_path_probs(paired_align_paths.at(j), clustered_path_index, frag_length_mean, frag_length_sd);
+            }
         }
 
-        break;
+        cout << num_paired_paths << " " << paired_path_prob.first;
+        for (auto & prob: paired_path_prob.second) {
+
+            cout << " " << prob;
+        }
+        cout << endl;
     }
  
     double time9 = gcsa::readTimer();
