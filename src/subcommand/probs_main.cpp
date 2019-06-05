@@ -535,7 +535,7 @@ int32_t main_probs(int32_t argc, char** argv) {
 
         vg::io::for_each_interleaved_pair_parallel<Alignment>(in, [&](Alignment& alignment_1, Alignment& alignment_2) {
 
-            if (alignment_1.mapping_quality() > 0 && alignment_2.mapping_quality() > 0) {
+            if (alignment_1.has_path() > 0 && alignment_2.has_path() > 0 && alignment_1.mapping_quality() > 0 && alignment_2.mapping_quality() > 0) {
 
                 auto paired_align_paths = get_paired_align_paths(alignment_1, alignment_2, *paths_index, *xg_index, frag_length_mean + 10 * frag_length_sd);
 
@@ -635,7 +635,7 @@ int32_t main_probs(int32_t argc, char** argv) {
 
         unordered_map<uint32_t, uint32_t> clustered_path_index;
 
-        cout << "#\n0";
+        cout << "#\nx 0";
         for (auto & path_id: path_clusters.cluster_to_path_index.at(i)) {
 
             assert(clustered_path_index.emplace(path_id, clustered_path_index.size()).second);
