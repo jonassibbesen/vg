@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <chrono>
+#include <limits>
 
 #include "subcommand.hpp"
 
@@ -25,6 +26,8 @@ using namespace vg::subcommand;
 const double frag_length_mean = 277;
 const double frag_length_sd = 43;
 
+static const double double_precision = numeric_limits<double>::epsilon() * 100;
+
 
 struct AlignmentPath {
 
@@ -43,9 +46,23 @@ struct AlignmentPath {
     }
 };
 
+bool unordered_pair_compare(const pair<int32_t, int32_t> & pair_1, const pair<int32_t, int32_t> & pair_2) {
+
+    if (pair_1.first == pair_2.first && pair_1.second == pair_2.second) {
+
+        return true;
+    
+    } else if (pair_1.first == pair_2.second && pair_1.second == pair_2.first) {
+
+        return true;
+    } 
+
+    return false;
+}
+
 bool operator==(const AlignmentPath & lhs, const AlignmentPath & rhs) { 
 
-    return (lhs.path_ids == rhs.path_ids && lhs.length == rhs.length && lhs.scores == rhs.scores && lhs.mapqs == rhs.mapqs);
+    return (lhs.path_ids == rhs.path_ids && lhs.length == rhs.length && unordered_pair_compare(lhs.scores, rhs.scores) && unordered_pair_compare(lhs.mapqs, rhs.mapqs));
 }
 
 bool operator!=(const AlignmentPath & lhs, const AlignmentPath & rhs) { 
@@ -68,7 +85,7 @@ bool operator<(const AlignmentPath & lhs, const AlignmentPath & rhs) {
         }         
     }
 
-    if (lhs.mapqs != rhs.mapqs) {
+    if (!unordered_pair_compare(lhs.mapqs, rhs.mapqs)) {
 
         return (lhs.mapqs < rhs.mapqs);
     }
@@ -78,7 +95,7 @@ bool operator<(const AlignmentPath & lhs, const AlignmentPath & rhs) {
         return (lhs.length < rhs.length);
     }
 
-    if (lhs.scores != rhs.scores) {
+    if (!unordered_pair_compare(lhs.scores, rhs.scores)) {
 
         return (lhs.scores < rhs.scores);
     }
@@ -429,24 +446,30 @@ pair<double, vector<double> > calculate_paired_path_probs(const vector<Alignment
     return make_pair(map_prob, paired_path_probs);
 } 
 
-bool is_align_paths_prob_identical(const vector<AlignmentPath> & align_paths_1, const vector<AlignmentPath> & align_paths_2) {
+inline bool doubleCompare(const double a, const double b) {
 
-    if (align_paths_1.size() == align_paths_2.size()) {
+    assert(std::isfinite(a));
+    assert(std::isfinite(b));
 
-        if (align_paths_1.size() == 1) {
+    return ((a == b) or (abs(a - b) < abs(min(a, b)) * double_precision));
+}
 
-            return (align_paths_1.front().path_ids == align_paths_2.front().path_ids &&align_paths_1.front().mapqs == align_paths_2.front().mapqs);
-        }
+bool is_path_probs_identical(const pair<double, vector<double> > & path_probs_1, const pair<double, vector<double> > & path_probs_2) {
 
-        for (size_t i = 0; i < align_paths_1.size(); i++) {
+    if (doubleCompare(path_probs_1.first, path_probs_2.first)) {
 
-            if (align_paths_1.at(i).path_ids != align_paths_2.at(i).path_ids || align_paths_1.at(i).length != align_paths_2.at(i).length || align_paths_1.at(i).mapqs != align_paths_2.at(i).mapqs) {
+        if (path_probs_1.second.size() == path_probs_2.second.size()) {
 
-                return false;
+            for (size_t i = 0; i < path_probs_1.second.size(); ++i) {
+
+                if (!doubleCompare(path_probs_1.second.at(i), path_probs_2.second.at(i))) {
+
+                    return false;
+                }
             }
-        }
 
-        return true;
+            return true;
+        }
     } 
 
     return false;
@@ -664,30 +687,32 @@ int32_t main_probs(int32_t argc, char** argv) {
         cout << endl;
 
         int32_t num_paired_paths = 1;
-        auto paired_path_prob = calculate_paired_path_probs(paired_align_paths.front(), clustered_path_index, frag_length_mean, frag_length_sd);
+        auto paired_path_probs = calculate_paired_path_probs(paired_align_paths.front(), clustered_path_index, frag_length_mean, frag_length_sd);
 
         for (size_t j = 1; j < paired_align_paths.size(); ++j) {
 
-            if (is_align_paths_prob_identical(paired_align_paths.at(j - 1), paired_align_paths.at(j))) {
+            auto paired_path_probs_new = calculate_paired_path_probs(paired_align_paths.at(j), clustered_path_index, frag_length_mean, frag_length_sd);
+
+            if (is_path_probs_identical(paired_path_probs, paired_path_probs_new)) {
 
                 num_paired_paths++;
             
             } else {
 
-                cout << num_paired_paths << " " << paired_path_prob.first;
-                for (auto & prob: paired_path_prob.second) {
+                cout << num_paired_paths << " " << paired_path_probs.first;
+                for (auto & prob: paired_path_probs.second) {
 
                     cout << " " << prob;
                 }
                 cout << endl;
 
                 num_paired_paths = 1;
-                paired_path_prob = calculate_paired_path_probs(paired_align_paths.at(j), clustered_path_index, frag_length_mean, frag_length_sd);
+                paired_path_probs = paired_path_probs_new;
             }
         }
 
-        cout << num_paired_paths << " " << paired_path_prob.first;
-        for (auto & prob: paired_path_prob.second) {
+        cout << num_paired_paths << " " << paired_path_probs.first;
+        for (auto & prob: paired_path_probs.second) {
 
             cout << " " << prob;
         }
