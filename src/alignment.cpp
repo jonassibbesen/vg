@@ -5,7 +5,7 @@
 
 namespace vg {
 
-int hts_for_each(string& filename, function<void(Alignment&)> lambda, xg::XG* xgindex) {
+int hts_for_each(string& filename, function<void(Alignment&)> lambda, XG* xgindex) {
 
     samFile *in = hts_open(filename.c_str(), "r");
     if (in == NULL) return 0;
@@ -28,7 +28,7 @@ int hts_for_each(string& filename, function<void(Alignment&)> lambda) {
     return hts_for_each(filename, lambda, nullptr);
 }
 
-int hts_for_each_parallel(string& filename, function<void(Alignment&)> lambda, xg::XG* xgindex) {
+int hts_for_each_parallel(string& filename, function<void(Alignment&)> lambda, XG* xgindex) {
 
     samFile *in = hts_open(filename.c_str(), "r");
     if (in == NULL) return 0;
@@ -856,7 +856,7 @@ void mapping_cigar(const Mapping& mapping, vector<pair<int, char>>& cigar) {
     }
 }
 
-int64_t cigar_mapping(const bam1_t *b, Mapping* mapping, xg::XG* xgindex) {
+int64_t cigar_mapping(const bam1_t *b, Mapping* mapping, XG* xgindex) {
     int64_t ref_length = 0;
     int64_t query_length = 0;
 
@@ -889,7 +889,7 @@ int64_t cigar_mapping(const bam1_t *b, Mapping* mapping, xg::XG* xgindex) {
     return ref_length;
 }
 
-void mapping_against_path(Alignment& alignment, const bam1_t *b, char* chr, xg::XG* xgindex, bool on_reverse_strand) {
+void mapping_against_path(Alignment& alignment, const bam1_t *b, char* chr, XG* xgindex, bool on_reverse_strand) {
 
     if (b->core.pos == -1) return;
 
@@ -1041,7 +1041,7 @@ int32_t sam_flag(const Alignment& alignment, bool on_reverse_strand, bool paired
     return flag;
 }
 
-Alignment bam_to_alignment(const bam1_t *b, map<string, string>& rg_sample, const bam_hdr_t *bh, xg::XG* xgindex) {
+Alignment bam_to_alignment(const bam1_t *b, map<string, string>& rg_sample, const bam_hdr_t *bh, XG* xgindex) {
 
     Alignment alignment;
 
@@ -1400,6 +1400,21 @@ int softclip_end(const Alignment& alignment) {
     return 0;
 }
 
+int softclip_trim(Alignment& alignment) {
+    // Trim the softclips off of every read
+    // Work out were to cut
+    int cut_start = softclip_start(alignment);
+    int cut_end = softclip_end(alignment);
+    // Cut the sequence and quality
+    alignment.set_sequence(alignment.sequence().substr(cut_start, alignment.sequence().size() - cut_start - cut_end));
+    if (alignment.quality().size() != 0) {
+        alignment.set_quality(alignment.quality().substr(cut_start, alignment.quality().size() - cut_start - cut_end));
+    }
+    // Trim the path
+    *alignment.mutable_path() = trim_hanging_ends(alignment.path());
+    return cut_start + cut_end;
+}
+
 int query_overlap(const Alignment& aln1, const Alignment& aln2) {
     if (!alignment_to_length(aln1) || !alignment_to_length(aln2)
         || !aln1.path().mapping_size() || !aln2.path().mapping_size()
@@ -1670,7 +1685,7 @@ pair<string, string> signature(const Alignment& aln1, const Alignment& aln2) {
 }
 
 void parse_bed_regions(istream& bedstream,
-                       xg::XG* xgindex,
+                       XG* xgindex,
                        vector<Alignment>* out_alignments) {
     out_alignments->clear();
     if (!bedstream) {
@@ -1737,7 +1752,7 @@ void parse_bed_regions(istream& bedstream,
 }
 
 void parse_gff_regions(istream& gffstream,
-                       xg::XG* xgindex,
+                       XG* xgindex,
                        vector<Alignment>* out_alignments) {
     out_alignments->clear();
     if (!gffstream) {

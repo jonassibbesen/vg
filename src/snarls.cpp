@@ -553,7 +553,7 @@ ChainIterator chain_end_from(const Chain& chain, const Snarl* start_snarl, bool 
 
 SnarlManager::SnarlManager(istream& in) : SnarlManager([&in](const function<void(Snarl&)>& consume_snarl) -> void {
     // Find all the snarls in the input stream and use each of them in the callback-based constructor
-    for (vg::io::ProtobufIterator<Snarl> iter(in); iter.has_next(); iter.get_next()) {
+    for (vg::io::ProtobufIterator<Snarl> iter(in); iter.has_current(); iter.advance()) {
         consume_snarl(*iter);
     }
 }) {
@@ -588,11 +588,6 @@ const Snarl* SnarlManager::snarl_sharing_start(const Snarl* here) const {
     // Return it, unless it's us, in which case we're a unary snarl that should go nowhere.
     return next == here ? nullptr : next;
         
-}
-
-size_t SnarlManager::get_depth(const Snarl* snarl) const {
-
-    return record(snarl)->depth;
 }
 
     
@@ -875,8 +870,6 @@ void SnarlManager::finish() {
     // Clean up the snarl and chain orientations so everything is predictably and intuitively oriented
     regularize();
 
-    //Find the depth of each of the snarls in the tree
-    get_depths();
 }
 
 const Snarl* SnarlManager::into_which_snarl(int64_t id, bool reverse) const {
@@ -1011,20 +1004,6 @@ void SnarlManager::build_indexes() {
     }
 }
     
-void SnarlManager::get_depths() {
-    for (const Snarl* root : roots){
-        get_depths_recursive(root, 0);
-    }
-
-}
-void SnarlManager::get_depths_recursive(const Snarl* snarl, size_t depth) {
-    SnarlRecord* snarl_record = (SnarlRecord*) record(snarl);
-    snarl_record->depth = depth;
-    vector<const Snarl*>& children = snarl_record->children;
-    for (const Snarl* child : children) {
-        get_depths_recursive(child, depth+1);
-    }
-}
 deque<Chain> SnarlManager::compute_chains(const vector<const Snarl*>& input_snarls) {
     // We populate this
     deque<Chain> to_return;

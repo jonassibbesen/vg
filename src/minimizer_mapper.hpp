@@ -12,7 +12,7 @@
 #include "alignment_emitter.hpp"
 #include "gapless_extender.hpp"
 #include "snarls.hpp"
-#include "distance.hpp"
+#include "min_distance.hpp"
 #include "seed_clusterer.hpp"
 
 #include <structures/immutable_list.hpp>
@@ -27,8 +27,9 @@ public:
     /**
      * Construct a new MinimizerMapper using the given indexes.
      */
-    MinimizerMapper(const xg::XG* xg_index, const gbwt::GBWT* gbwt_index, const MinimizerIndex* minimizer_index,
-        SnarlManager* snarl_manager, DistanceIndex* distance_index);
+
+    MinimizerMapper(const XG* xg_index, const gbwt::GBWT* gbwt_index, const MinimizerIndex* minimizer_index,
+         MinimumDistanceIndex* distance_index);
 
     /**
      * Map the given read, and send output to the given AlignmentEmitter. May be run from any thread.
@@ -39,10 +40,23 @@ public:
     // Mapping settings.
     // TODO: document each
 
-    /// How many extended clusters should we align, max?
-    size_t max_alignments = 48;
-    size_t max_multimaps = 1;
+    /// Use all minimizers with at most hit_cap hits
     size_t hit_cap = 10;
+
+    /// Ignore all minimizers with more than hard_hit_cap hits
+    size_t hard_hit_cap = 300;
+
+    /// Take minimizers between hit_cap and hard_hit_cap hits until this fraction
+    /// of total score
+    double minimizer_score_fraction = 0.6;
+
+    /// How many clusters should we align?
+    size_t max_extensions = 48;
+
+    /// How many extended clusters should we align, max?
+    size_t max_alignments = 8;
+
+    size_t max_multimaps = 1;
     size_t distance_limit = 1000;
     bool do_chaining = true;
     bool use_xdrop_for_tails = false;
@@ -52,11 +66,10 @@ public:
 
 protected:
     // These are our indexes
-    const xg::XG* xg_index;
+    const XG* xg_index;
     const gbwt::GBWT* gbwt_index;
     const MinimizerIndex* minimizer_index;
-    SnarlManager* snarl_manager;
-    DistanceIndex* distance_index;
+    MinimumDistanceIndex* distance_index;
 
     /// We have a GBWTGraph over the GBWT and the XG
     GBWTGraph gbwt_graph;

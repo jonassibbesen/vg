@@ -636,7 +636,7 @@ int main_map(int argc, char** argv) {
     gcsa::TempFile::setDirectory(temp_file::get_dir());
 
     // Load up our indexes.
-    unique_ptr<xg::XG> xgidx;
+    unique_ptr<XG> xgidx;
     unique_ptr<gcsa::GCSA> gcsa;
     unique_ptr<gcsa::LCPArray> lcp;
     unique_ptr<gbwt::GBWT> gbwt;
@@ -655,7 +655,7 @@ int main_map(int argc, char** argv) {
         if(debug) {
             cerr << "Loading xg index " << xg_name << "..." << endl;
         }
-        xgidx = vg::io::VPKG::load_one<xg::XG>(xg_stream);
+        xgidx = vg::io::VPKG::load_one<XG>(xg_stream);
     }
 
     ifstream gcsa_stream(gcsa_name);
@@ -728,7 +728,7 @@ int main_map(int argc, char** argv) {
     }
 
     // Set up output to an emitter that will handle serialization
-    unique_ptr<AlignmentEmitter> alignment_emitter = get_alignment_emitter("-", output_format, path_length);
+    unique_ptr<AlignmentEmitter> alignment_emitter = get_alignment_emitter("-", output_format, path_length, thread_count);
 
     // TODO: Refactor the surjection code out of surject_main and into somewhere where we can just use it here!
 

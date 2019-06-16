@@ -22,6 +22,7 @@
 #include "graph.hpp"
 #include "path.hpp"
 #include "handle.hpp"
+#include "utility.hpp"
 
 // We can have DYNAMIC or SDSL-based gPBWTs
 #define MODE_DYNAMIC 1
@@ -33,7 +34,7 @@
 #include "dynamic.hpp"
 #endif
 
-namespace xg {
+namespace vg {
 
 using namespace std;
 using namespace sdsl;
@@ -162,6 +163,8 @@ public:
     // these provide a way to get an index for each node and edge in the g_iv structure and are used by gPBWT
     size_t node_graph_idx(int64_t id) const;
     size_t edge_graph_idx(const Edge& edge) const;
+
+    size_t get_g_iv_size() const;
 
     ////////////////////////////////////////////////////////////////////////////
     // Here is the old low-level API that needs to be restated in terms of the 
@@ -616,7 +619,7 @@ public:
     map<string, list<thread_t> > extract_threads_matching(const string& pattern, bool reverse) const;
     /// Extract a particular thread, referring to it by its offset at node; step
     /// it out to a maximum of max_length
-    thread_t extract_thread(xg::XG::ThreadMapping node, int64_t offset, int64_t max_length);
+    thread_t extract_thread(XG::ThreadMapping node, int64_t offset, int64_t max_length);
     /// Count matches to a subthread among embedded threads
     size_t count_matches(const thread_t& t) const;
     size_t count_matches(const Path& t) const;
@@ -709,7 +712,7 @@ private:
     /// edges_to := { edge_to, ... }
     /// edges_from := { edge_from, ... }
     /// edge_to := { offset_to_previous_node, edge_type }
-    /// edge_to := { offset_to_next_node, edge_type }
+    /// edge_from := { offset_to_next_node, edge_type }
     int_vector<> g_iv;
     /// delimit node records to allow lookup of nodes in g_civ by rank
     bit_vector g_bv;
@@ -965,7 +968,7 @@ Mapping new_mapping(const string& name, int64_t id, size_t rank, bool is_reverse
 void to_text(ostream& out, Graph& graph);
 
 // Serialize a rank_select_int_vector in an SDSL serialization compatible way. Returns the number of bytes written.
-size_t serialize(const XG::rank_select_int_vector& to_serialize, ostream& out,
+size_t serialize_vector(const XG::rank_select_int_vector& to_serialize, ostream& out,
     sdsl::structure_tree_node* parent, const std::string name);
 
 // Deserialize a rank_select_int_vector in an SDSL serialization compatible way.
@@ -991,10 +994,6 @@ bool depart_by_reverse(const Edge& e, int64_t node_id, bool node_is_reverse);
 
 // Make an edge from its fields (generally for comparison)
 Edge make_edge(int64_t from, bool from_start, int64_t to, bool to_end);
-
-// Helpers for when we're picking up parts of the graph without returning full Node objects
-char reverse_complement(const char& c);
-string reverse_complement(const string& seq);
 
 // Position parsing helpers for CLI
 void extract_pos(const string& pos_str, int64_t& id, bool& is_rev, size_t& off);
