@@ -16,6 +16,7 @@
  
 #include <vg/io/vpkg.hpp>
 #include <vg/io/stream.hpp>
+#include "vg/io/basic_stream.hpp"
 
 using namespace std;
 using namespace vg;
@@ -278,7 +279,7 @@ vector<gbwt::node_type> path_to_gbwt_nodes(const Path & path) {
     return gbwt_nodes;
 }
 
-void find_paired_align_paths(vector<AlignmentPath> * paired_align_paths, const AlignmentPath & start_align_path, const Alignment & end_alignment, const gbwt::GBWT & paths_index, const xg::XG & xg_index, const int32_t max_pair_distance) {
+void find_paired_align_paths(vector<AlignmentPath> * paired_align_paths, const AlignmentPath & start_align_path, const Alignment & end_alignment, const gbwt::GBWT & paths_index, const vg::Graph & graph, const int32_t max_pair_distance) {
 
     assert(!start_align_path.path.empty());
 
@@ -310,7 +311,7 @@ void find_paired_align_paths(vector<AlignmentPath> * paired_align_paths, const A
             while (end_alignment_nodes_it != end_alignment_nodes.end()) {
 
                 cur_paired_align_path.path = paths_index.extend(cur_paired_align_path.path, *end_alignment_nodes_it);
-                cur_paired_align_path.length += xg_index.node_length(gbwt::Node::id(*end_alignment_nodes_it));
+                cur_paired_align_path.length += graph.node(gbwt::Node::id(*end_alignment_nodes_it)).sequence().size();
                 ++end_alignment_nodes_it;
             }
 
@@ -349,7 +350,7 @@ void find_paired_align_paths(vector<AlignmentPath> * paired_align_paths, const A
 
                     AlignmentPath new_paired_align_path;
                     new_paired_align_path.path = extended_path;
-                    new_paired_align_path.length = cur_paired_align_path.length + xg_index.node_length(gbwt::Node::id(out_edges_it->first));
+                    new_paired_align_path.length = cur_paired_align_path.length + graph.node(gbwt::Node::id(out_edges_it->first)).sequence().size();
                     new_paired_align_path.scores = cur_paired_align_path.scores;
                     new_paired_align_path.mapqs = cur_paired_align_path.mapqs;
 
@@ -364,24 +365,24 @@ void find_paired_align_paths(vector<AlignmentPath> * paired_align_paths, const A
     }
 }
 
-vector<AlignmentPath> get_paired_align_paths(const Alignment & alignment_1, const Alignment & alignment_2, const gbwt::GBWT & paths_index, const xg::XG & xg_index, const int32_t max_pair_distance) {
+vector<AlignmentPath> get_paired_align_paths(const Alignment & alignment_1, const Alignment & alignment_2, const gbwt::GBWT & paths_index, const vg::Graph & graph, const int32_t max_pair_distance) {
 
     vector<AlignmentPath> paired_align_paths;
 
-    function<size_t(const int64_t)> node_length_func = [&xg_index](const int64_t node_id) { return xg_index.node_length(node_id); };
+    function<size_t(const int64_t)> node_length_func = [&graph](const int64_t node_id) { return graph.node(node_id).sequence().size(); };
 
     auto align_path_1 = get_align_path(alignment_1, paths_index);
     if (!align_path_1.path.empty()) {
 
         const Alignment alignment_2_rc = reverse_complement_alignment(alignment_2, node_length_func);
-        find_paired_align_paths(&paired_align_paths, align_path_1, alignment_2_rc, paths_index, xg_index, max_pair_distance);
+        find_paired_align_paths(&paired_align_paths, align_path_1, alignment_2_rc, paths_index, graph, max_pair_distance);
     }
 
     auto align_path_2 = get_align_path(alignment_2, paths_index);
     if (!align_path_2.path.empty()) {
 
         const Alignment alignment_1_rc = reverse_complement_alignment(alignment_1, node_length_func);
-        find_paired_align_paths(&paired_align_paths, align_path_2, alignment_1_rc, paths_index, xg_index, max_pair_distance);
+        find_paired_align_paths(&paired_align_paths, align_path_2, alignment_1_rc, paths_index, graph, max_pair_distance);
     }
 
     return paired_align_paths;
@@ -552,7 +553,7 @@ int32_t main_probs(int32_t argc, char** argv) {
 
     double time1 = gcsa::readTimer();
 
-    unique_ptr<xg::XG> xg_index = vg::io::VPKG::load_one<xg::XG>(get_input_file_name(optind, argc, argv));
+    vg::Graph graph = vg::io::inputStream(get_input_file_name(optind, argc, argv));
 
     double time2 = gcsa::readTimer();
     cerr << "Load XG " << time2 - time1 << " seconds, " << gcsa::inGigabytes(gcsa::memoryUsage()) << " GB" << endl;
@@ -573,17 +574,19 @@ int32_t main_probs(int32_t argc, char** argv) {
 
             if (alignment_1.has_path() > 0 && alignment_2.has_path() > 0 && alignment_1.mapping_quality() > 0 && alignment_2.mapping_quality() > 0) {
 
-                auto paired_align_paths = get_paired_align_paths(alignment_1, alignment_2, *paths_index, *xg_index, frag_length_mean + 10 * frag_length_sd);
+                auto paired_align_paths = get_paired_align_paths(alignment_1, alignment_2, *paths_index, graph, frag_length_mean + 10 * frag_length_sd);
 
 #ifdef debug
                 cerr << endl;
                 cerr << pb2json(alignment_1) << endl;
                 cerr << pb2json(alignment_2) << endl;
 
+                // 
+
                 cerr << get_align_path_with_ids(alignment_1, *paths_index) << endl;
-                cerr << get_align_path_with_ids(reverse_complement_alignment(alignment_1, [&xg_index](const int64_t node_id) { return xg_index->node_length(node_id); }), *paths_index) << endl;
+                cerr << get_align_path_with_ids(reverse_complement_alignment(alignment_1, [&graph](const int64_t node_id) { return graph.node(node_id).sequence().size(); }), *paths_index) << endl;
                 cerr << get_align_path_with_ids(alignment_2, *paths_index) << endl;
-                cerr << get_align_path_with_ids(reverse_complement_alignment(alignment_2, [&xg_index](const int64_t node_id) { return xg_index->node_length(node_id); }), *paths_index) << endl;
+                cerr << get_align_path_with_ids(reverse_complement_alignment(alignment_2, [&graph](const int64_t node_id) { return graph.node(node_id).sequence().size(); }), *paths_index) << endl;
           
                 for (auto & align_path: paired_align_paths) {
 
