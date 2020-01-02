@@ -387,7 +387,13 @@ list<TranscriptPath> Transcriptome::project_transcript_gbwt(const Transcript & c
 
                     if (exon_idx != haplotype_id_index_it->second.second) {
 
+                        if (haplotype_id_index_it->second.second >= exon_idx) {
+
+                            cerr << cur_transcript.name << endl;
+                        }
+
                         assert(haplotype_id_index_it->second.second < exon_idx);
+
                         haplotype_id_index.erase(haplotype_id_index_it);
                         continue;
                     }

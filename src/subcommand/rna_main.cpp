@@ -236,6 +236,8 @@ int32_t main_rna(int32_t argc, char** argv) {
     transcriptome.use_reference_paths = (add_reference_transcript_paths || output_reference_transcript_paths);
     transcriptome.collapse_transcript_paths = collapse_transcript_paths;
 
+    cerr << transcriptome.splice_graph().max_node_id() << endl;
+
 
     double time_project_start = gcsa::readTimer();
     if (show_progress) { cerr << "[vg rna] Parsing and projecting transcripts ..." << endl; }

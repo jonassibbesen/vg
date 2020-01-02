@@ -350,7 +350,7 @@ int main_paths(int argc, char** argv) {
             }
             
             // Otherwise we need the actual thread data
-            gbwt::vector_type sequence = gbwt_index->extract(gbwt::Path::encode(id, false));
+            gbwt::vector_type sequence = gbwt_index->extract(id); //gbwt::Path::encode(id, false));
             Path path;
             path.set_name(name);
             size_t rank = 1;
