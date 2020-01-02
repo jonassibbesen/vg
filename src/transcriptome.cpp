@@ -14,7 +14,7 @@ namespace vg {
 
 using namespace std;
 
-// #define transcriptome_debug
+#define transcriptome_debug
 
 
 Transcriptome::Transcriptome(const string & graph_filename, const bool show_progress) {
@@ -347,6 +347,28 @@ list<TranscriptPath> Transcriptome::project_transcript_gbwt(const Transcript & c
     vector<pair<vector<exon_nodes_t>, thread_ids_t> > haplotypes;
     unordered_map<int32_t, pair<int32_t, int32_t> > haplotype_id_index;
 
+    // ### DEBUG
+
+    if (cur_transcript.name == "ENST00000607286.5") {
+
+        cerr << "###" << endl;
+        cerr << cur_transcript.name << endl;
+        cerr << cur_transcript.is_reverse << endl;
+        cerr << cur_transcript.chrom << endl;
+        
+        for (auto bla: cur_transcript.exons) {
+
+            cerr << bla.first << " " << bla.second << endl;
+        }
+   
+        for (auto bla: cur_transcript.exon_border_nodes) {
+
+            cerr << pb2json(bla.first) << " " << pb2json(bla.second) << endl;
+        }
+    }
+
+    // ### DEBUG
+
     for (size_t exon_idx = 0; exon_idx < cur_transcript.exons.size(); ++exon_idx) {
 
         // Calculate expected number of nodes between exon start and end.
@@ -355,6 +377,31 @@ list<TranscriptPath> Transcriptome::project_transcript_gbwt(const Transcript & c
         // Get all haplotypes in GBWT index between exon start and end border nodes (last position in upstream intron and
         // first position in downstream intron).
         auto exon_haplotypes = get_exon_haplotypes(cur_transcript.exon_border_nodes.at(exon_idx).first.node_id(), cur_transcript.exon_border_nodes.at(exon_idx).second.node_id(), haplotype_index, expected_length);
+
+        // ### DEBUG
+
+        if (cur_transcript.name == "ENST00000607286.5") {
+
+            cerr << "###" << endl;
+            cerr << exon_idx << endl;
+            
+            for (auto bla: exon_haplotypes) {
+
+                for (auto bla2: bla.first) {
+
+                    cerr << bla2 << " ";
+                }
+                cout << " | ";
+
+                for (auto bla2: bla.second) {
+
+                    cerr << bla2 << " ";
+                }
+                cout << endl;
+            }
+        }
+
+        // ### DEBUG
 
         if (haplotypes.empty()) {
 
@@ -386,11 +433,6 @@ list<TranscriptPath> Transcriptome::project_transcript_gbwt(const Transcript & c
                     }
 
                     if (exon_idx != haplotype_id_index_it->second.second) {
-
-                        if (haplotype_id_index_it->second.second >= exon_idx) {
-
-                            cerr << cur_transcript.name << endl;
-                        }
 
                         assert(haplotype_id_index_it->second.second < exon_idx);
 
