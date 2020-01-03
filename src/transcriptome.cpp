@@ -666,6 +666,7 @@ vector<pair<exon_nodes_t, thread_ids_t> > Transcriptome::get_exon_haplotypes(con
 
         while (out_edges_it != out_edges.end()) {
 
+            // Do not extend haplotypes that end within exon.
             if (out_edges_it->first != gbwt::ENDMARKER) {
 
                 auto extended_search = haplotype_index.extend(cur_exon_haplotype.second, out_edges_it->first);
@@ -681,11 +682,19 @@ vector<pair<exon_nodes_t, thread_ids_t> > Transcriptome::get_exon_haplotypes(con
             ++out_edges_it;
         }
 
-        cur_exon_haplotype.first.emplace_back(out_edges.begin()->first);
-        cur_exon_haplotype.second = haplotype_index.extend(cur_exon_haplotype.second, out_edges.begin()->first);        
+        // Do not extend haplotypes that end within exon.
+        if (out_edges.begin()->first != gbwt::ENDMARKER) {
 
-        // End current extension if empty (no haplotypes found). 
-        if (cur_exon_haplotype.second.empty()) { exon_haplotype_queue.pop(); }
+            cur_exon_haplotype.first.emplace_back(out_edges.begin()->first);
+            cur_exon_haplotype.second = haplotype_index.extend(cur_exon_haplotype.second, out_edges.begin()->first);        
+
+            // End current extension if empty (no haplotypes found). 
+            if (cur_exon_haplotype.second.empty()) { exon_haplotype_queue.pop(); }
+
+        } else {
+
+            exon_haplotype_queue.pop();
+        }
     }
 
     return exon_haplotypes;
