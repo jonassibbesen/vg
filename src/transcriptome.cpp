@@ -504,6 +504,8 @@ list<TranscriptPath> Transcriptome::project_transcript_gbwt(const Transcript & c
 
             for (auto & exon_node: haplotype.first.at(exon_idx)) {
 
+                assert(exon_node != gbwt::ENDMARKER);
+
                 auto node_id = gbwt::Node::id(exon_node);
                 auto node_length = _splice_graph->get_length(_splice_graph->get_handle(node_id));
 
@@ -664,13 +666,16 @@ vector<pair<exon_nodes_t, thread_ids_t> > Transcriptome::get_exon_haplotypes(con
 
         while (out_edges_it != out_edges.end()) {
 
-            auto extended_search = haplotype_index.extend(cur_exon_haplotype.second, out_edges_it->first);
+            if (out_edges_it->first != gbwt::ENDMARKER) {
 
-            // Add new extension to queue if not empty (haplotypes found).
-            if (!extended_search.empty()) { 
+                auto extended_search = haplotype_index.extend(cur_exon_haplotype.second, out_edges_it->first);
 
-                exon_haplotype_queue.push(make_pair(cur_exon_haplotype.first, extended_search));
-                exon_haplotype_queue.back().first.emplace_back(out_edges_it->first);
+                // Add new extension to queue if not empty (haplotypes found).
+                if (!extended_search.empty()) { 
+
+                    exon_haplotype_queue.push(make_pair(cur_exon_haplotype.first, extended_search));
+                    exon_haplotype_queue.back().first.emplace_back(out_edges_it->first);
+                }
             }
 
             ++out_edges_it;
