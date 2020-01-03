@@ -105,7 +105,9 @@ class Transcriptome {
         bool collapse_transcript_paths = true;
 
         /// Constructs transcript paths by projecting transcripts from a gtf/gff file onto 
-        /// embedded paths in a variation graph and/or haplotypes in a GBWT index.   
+        /// embedded paths in a variation graph and/or haplotypes in a GBWT index. Augment 
+        /// graph with transcriptome splice-junctions. Return false if new nodes where 
+        /// constructed.
         void add_transcripts(istream & transcript_stream, const gbwt::GBWT & haplotype_index);
         
         /// Returns transcript paths.
