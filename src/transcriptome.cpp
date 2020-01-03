@@ -342,11 +342,6 @@ void Transcriptome::project_transcripts_callback(list<TranscriptPath> * proj_tra
 
 list<TranscriptPath> Transcriptome::project_transcript_gbwt(const Transcript & cur_transcript, const gbwt::GBWT & haplotype_index, const float mean_node_length) const {
 
-    list<TranscriptPath> cur_transcript_paths;
-
-    vector<pair<vector<exon_nodes_t>, thread_ids_t> > haplotypes;
-    unordered_map<int32_t, pair<int32_t, int32_t> > haplotype_id_index;
-
     // ### DEBUG
 
     if (cur_transcript.name == "ENST00000607286.5") {
@@ -368,6 +363,11 @@ list<TranscriptPath> Transcriptome::project_transcript_gbwt(const Transcript & c
     }
 
     // ### DEBUG
+
+    list<TranscriptPath> cur_transcript_paths;
+
+    vector<pair<vector<exon_nodes_t>, thread_ids_t> > haplotypes;
+    unordered_map<int32_t, pair<int32_t, int32_t> > haplotype_id_index;
 
     for (size_t exon_idx = 0; exon_idx < cur_transcript.exons.size(); ++exon_idx) {
 
@@ -688,26 +688,27 @@ vector<pair<exon_nodes_t, thread_ids_t> > Transcriptome::get_exon_haplotypes(con
 
 list<TranscriptPath> Transcriptome::project_transcript_embedded(const Transcript & cur_transcript) const {
 
+    // ### DEBUG
+
     if (cur_transcript.name == "ENST00000607286.5") {
 
         cerr << "###" << endl;
-        cerr << exon_idx << endl;
+        cerr << cur_transcript.name << endl;
+        cerr << cur_transcript.is_reverse << endl;
+        cerr << cur_transcript.chrom << endl;
         
-        for (auto bla: exon_haplotypes) {
+        for (auto bla: cur_transcript.exons) {
 
-            for (auto bla2: bla.first) {
+            cerr << bla.first << " " << bla.second << endl;
+        }
+   
+        for (auto bla: cur_transcript.exon_border_nodes) {
 
-                cerr << bla2 << " ";
-            }
-            cout << " | ";
-
-            for (auto bla2: bla.second) {
-
-                cerr << bla2 << " ";
-            }
-            cout << endl;
+            cerr << pb2json(bla.first) << " " << pb2json(bla.second) << endl;
         }
     }
+
+    // ### DEBUG
 
     vector<unordered_map<path_handle_t, step_handle_t> > exon_start_node_path_steps;
     vector<unordered_map<path_handle_t, step_handle_t> > exon_end_node_path_steps;
