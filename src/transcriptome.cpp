@@ -389,15 +389,9 @@ list<TranscriptPath> Transcriptome::project_transcript_gbwt(const Transcript & c
 
                 for (auto bla2: bla.first) {
 
-                    cerr << bla2 << " ";
+                    cerr << gbwt::Node::id(bla2) << " ";
                 }
-                cerr << " | ";
-
-                for (auto bla2: bla.second) {
-
-                    cerr << bla2 << " ";
-                }
-                cerr << endl;
+                cerr << " | " << bla.first.size() << endl;
             }
         }
 
