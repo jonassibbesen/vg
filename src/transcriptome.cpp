@@ -688,6 +688,27 @@ vector<pair<exon_nodes_t, thread_ids_t> > Transcriptome::get_exon_haplotypes(con
 
 list<TranscriptPath> Transcriptome::project_transcript_embedded(const Transcript & cur_transcript) const {
 
+    if (cur_transcript.name == "ENST00000607286.5") {
+
+        cerr << "###" << endl;
+        cerr << exon_idx << endl;
+        
+        for (auto bla: exon_haplotypes) {
+
+            for (auto bla2: bla.first) {
+
+                cerr << bla2 << " ";
+            }
+            cout << " | ";
+
+            for (auto bla2: bla.second) {
+
+                cerr << bla2 << " ";
+            }
+            cout << endl;
+        }
+    }
+
     vector<unordered_map<path_handle_t, step_handle_t> > exon_start_node_path_steps;
     vector<unordered_map<path_handle_t, step_handle_t> > exon_end_node_path_steps;
 
