@@ -391,13 +391,13 @@ list<TranscriptPath> Transcriptome::project_transcript_gbwt(const Transcript & c
 
                     cerr << bla2 << " ";
                 }
-                cout << " | ";
+                cerr << " | ";
 
                 for (auto bla2: bla.second) {
 
                     cerr << bla2 << " ";
                 }
-                cout << endl;
+                cerr << endl;
             }
         }
 
