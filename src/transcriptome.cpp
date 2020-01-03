@@ -358,7 +358,7 @@ list<TranscriptPath> Transcriptome::project_transcript_gbwt(const Transcript & c
    
         for (auto bla: cur_transcript.exon_border_nodes) {
 
-            cerr << pb2json(bla.first) << " " << pb2json(bla.second) << endl;
+            cerr << pb2json(bla.first) << " " << pb2json(bla.second) << " " << _splice_graph->get_length(_splice_graph->get_handle(bla.first.node_id())) << endl;
         }
     }
 
@@ -391,7 +391,7 @@ list<TranscriptPath> Transcriptome::project_transcript_gbwt(const Transcript & c
 
                     cerr << gbwt::Node::id(bla2) << " ";
                 }
-                cerr << " | " << bla.first.size() << endl;
+                cerr << " | " << bla.second.size() << endl;
             }
         }
 
@@ -428,7 +428,7 @@ list<TranscriptPath> Transcriptome::project_transcript_gbwt(const Transcript & c
 
                     if (exon_idx != haplotype_id_index_it->second.second) {
 
-                        assert(haplotype_id_index_it->second.second < exon_idx);
+                        // assert(haplotype_id_index_it->second.second < exon_idx);
 
                         haplotype_id_index.erase(haplotype_id_index_it);
                         continue;
