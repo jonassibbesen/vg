@@ -1070,6 +1070,11 @@ void Transcriptome::augment_splice_graph(list<TranscriptPath> * new_transcript_p
     for (auto & transcript_path: *new_transcript_paths) {
 
         edit_paths.emplace_back(move(transcript_path.path));
+
+        if (transcript_path.name == "ENST00000482308.1_2") {
+
+            cerr << pb2json(edit_paths.back()) << endl;
+        }
     }
 
     stringstream gam_out_stream;
@@ -1084,6 +1089,12 @@ void Transcriptome::augment_splice_graph(list<TranscriptPath> * new_transcript_p
     vg::io::for_each<vg::Alignment>(gam_out_stream, [&](vg::Alignment & alignment) {
 
         new_transcript_paths_it->path = move(alignment.path());
+
+        if (new_transcript_paths_it->name == "ENST00000482308.1_2") {
+
+            cerr << pb2json(new_transcript_paths_it->path) << endl;
+        }
+
         ++new_transcript_paths_it;
     });
 
