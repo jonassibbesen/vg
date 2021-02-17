@@ -7,7 +7,7 @@
 #include <iostream>
 
 #include "gbwt/dynamic_gbwt.h"
-#include "bdsg/hash_graph.hpp"
+#include "bdsg/packed_graph.hpp"
 
 #include "../transcriptome.hpp"
 
@@ -16,7 +16,7 @@
 namespace vg {
     namespace unittest {
 
-        vector<vector<uint64_t> > transcriptPathsToIntVectors(const vector<CompletedTranscriptPath> & transcript_paths) {
+        vector<vector<uint64_t> > transcript_paths_to_int_vectors(const vector<CompletedTranscriptPath> & transcript_paths) {
 
             vector<vector<uint64_t> > int_vectors;
             int_vectors.reserve(transcript_paths.size());
@@ -38,7 +38,7 @@ namespace vg {
 
         TEST_CASE("Transcriptome can add splice-junctions and project transcripts", "[transcriptome]") {
          
-            unique_ptr<MutablePathDeletableHandleGraph> graph(new bdsg::HashGraph);
+            unique_ptr<MutablePathDeletableHandleGraph> graph(new bdsg::PackedGraph);
                
             handle_t node1 = graph->create_handle("AAAA");
             handle_t node2 = graph->create_handle("CC");
@@ -101,6 +101,7 @@ namespace vg {
             SECTION("Transcriptome can add splice-junctions") {
 
                 transcriptome.add_transcript_splice_junctions(transcript_stream, empty_haplotype_index);
+                transcriptome.compact_ordered();
 
                 REQUIRE(transcriptome.size() == 0);
                 REQUIRE(transcriptome.splice_graph_node_updated());
@@ -123,10 +124,10 @@ namespace vg {
                     transcriptome.add_transcripts(transcript_stream, *empty_haplotype_index);
                     REQUIRE(transcriptome.size() == 2);
 
-                    auto int_transcript_paths = transcriptPathsToIntVectors(transcriptome.transcript_paths());
+                    auto int_transcript_paths = transcript_paths_to_int_vectors(transcriptome.transcript_paths());
 
-                    REQUIRE(int_transcript_paths.front() == vector<uint64_t>({20, 4, 8, 16, 22}));
-                    REQUIRE(int_transcript_paths.back() == vector<uint64_t>({23, 9, 5, 21}));
+                    REQUIRE(int_transcript_paths.front() == vector<uint64_t>({4, 6, 10, 14, 22}));
+                    REQUIRE(int_transcript_paths.back() == vector<uint64_t>({23, 11, 7, 5}));
                 }
 
                 SECTION("Transcriptome can project transcripts onto all embedded paths") {
@@ -136,12 +137,12 @@ namespace vg {
                     transcriptome.add_transcripts(transcript_stream, *empty_haplotype_index);
                     REQUIRE(transcriptome.size() == 4);
 
-                    auto int_transcript_paths = transcriptPathsToIntVectors(transcriptome.transcript_paths());
+                    auto int_transcript_paths = transcript_paths_to_int_vectors(transcriptome.transcript_paths());
 
-                    REQUIRE(int_transcript_paths.front() == vector<uint64_t>({20, 4, 8, 16, 22}));
-                    REQUIRE(int_transcript_paths.at(1) == vector<uint64_t>({20, 6, 8, 16, 22}));
-                    REQUIRE(int_transcript_paths.at(2) == vector<uint64_t>({23, 9, 5, 21}));
-                    REQUIRE(int_transcript_paths.back() == vector<uint64_t>({23, 9, 7, 21}));
+                    REQUIRE(int_transcript_paths.front() == vector<uint64_t>({4, 6, 10, 14, 22}));
+                    REQUIRE(int_transcript_paths.at(1) == vector<uint64_t>({4, 8, 10, 14, 22}));
+                    REQUIRE(int_transcript_paths.at(2) == vector<uint64_t>({23, 11, 7, 5}));
+                    REQUIRE(int_transcript_paths.back() == vector<uint64_t>({23, 11, 9, 5}));
                 }
 
                 SECTION("Transcriptome can project transcripts onto all embedded paths and not collapse redundant paths") {
@@ -152,14 +153,14 @@ namespace vg {
                     transcriptome.add_transcripts(transcript_stream, *empty_haplotype_index);
                     REQUIRE(transcriptome.size() == 6);
 
-                    auto int_transcript_paths = transcriptPathsToIntVectors(transcriptome.transcript_paths());
+                    auto int_transcript_paths = transcript_paths_to_int_vectors(transcriptome.transcript_paths());
 
-                    REQUIRE(int_transcript_paths.front() == vector<uint64_t>({20, 4, 8, 16, 22}));
-                    REQUIRE(int_transcript_paths.at(1) == vector<uint64_t>({20, 4, 8, 16, 22}));
-                    REQUIRE(int_transcript_paths.at(2) == vector<uint64_t>({20, 6, 8, 16, 22}));
-                    REQUIRE(int_transcript_paths.at(3) == vector<uint64_t>({23, 9, 5, 21}));
-                    REQUIRE(int_transcript_paths.at(4) == vector<uint64_t>({23, 9, 5, 21}));
-                    REQUIRE(int_transcript_paths.back() == vector<uint64_t>({23, 9, 7, 21}));
+                    REQUIRE(int_transcript_paths.front() == vector<uint64_t>({4, 6, 10, 14, 22}));
+                    REQUIRE(int_transcript_paths.at(1) == vector<uint64_t>({4, 6, 10, 14, 22}));
+                    REQUIRE(int_transcript_paths.at(2) == vector<uint64_t>({4, 8, 10, 14, 22}));
+                    REQUIRE(int_transcript_paths.at(3) == vector<uint64_t>({23, 11, 7, 5}));
+                    REQUIRE(int_transcript_paths.at(4) == vector<uint64_t>({23, 11, 7, 5}));
+                    REQUIRE(int_transcript_paths.back() == vector<uint64_t>({23, 11, 9, 5}));
                 }
 
                 SECTION("Transcriptome can add transcript paths to graph") {
@@ -186,6 +187,67 @@ namespace vg {
                     REQUIRE(transcriptome.splice_graph().get_edge_count() == 7);
                     REQUIRE(transcriptome.splice_graph().get_path_count() == 0);                
                 }
+
+                SECTION("Transcriptome can project transcripts onto GBWT threads") {
+
+                    gbwt::Verbosity::set(gbwt::Verbosity::SILENT);
+                    gbwt::GBWTBuilder gbwt_builder(gbwt::bit_length(gbwt::Node::encode(11, true)));
+
+                    gbwt::vector_type gbwt_thread_1(9);
+                    gbwt::vector_type gbwt_thread_2(10);
+       
+                    gbwt_thread_1[0] = gbwt::Node::encode(1, false);
+                    gbwt_thread_1[1] = gbwt::Node::encode(2, false);
+                    gbwt_thread_1[2] = gbwt::Node::encode(3, false);
+                    gbwt_thread_1[3] = gbwt::Node::encode(5, false);
+                    gbwt_thread_1[4] = gbwt::Node::encode(6, false);
+                    gbwt_thread_1[5] = gbwt::Node::encode(7, false);
+                    gbwt_thread_1[6] = gbwt::Node::encode(8, false);
+                    gbwt_thread_1[7] = gbwt::Node::encode(10, false);
+                    gbwt_thread_1[8] = gbwt::Node::encode(11, false);
+
+                    gbwt_thread_2[0] = gbwt::Node::encode(1, false);
+                    gbwt_thread_2[1] = gbwt::Node::encode(2, false);
+                    gbwt_thread_2[2] = gbwt::Node::encode(3, false);
+                    gbwt_thread_2[3] = gbwt::Node::encode(5, false);
+                    gbwt_thread_2[4] = gbwt::Node::encode(6, false);
+                    gbwt_thread_2[5] = gbwt::Node::encode(7, false);
+                    gbwt_thread_2[6] = gbwt::Node::encode(8, false);
+                    gbwt_thread_2[7] = gbwt::Node::encode(9, false);
+                    gbwt_thread_2[8] = gbwt::Node::encode(10, false);
+                    gbwt_thread_2[9] = gbwt::Node::encode(11, false);
+
+                    gbwt::vector_type gbwt_thread_3 = gbwt_thread_1;
+                    gbwt_thread_3[2] = gbwt::Node::encode(4, false);
+
+                    gbwt::vector_type gbwt_thread_4 = gbwt_thread_2;
+                    gbwt_thread_4[2] = gbwt::Node::encode(4, false);
+
+                    gbwt_builder.insert(gbwt_thread_1, true);
+                    gbwt_builder.insert(gbwt_thread_2, true);
+                    gbwt_builder.insert(gbwt_thread_3, true);
+                    gbwt_builder.insert(gbwt_thread_4, true);
+
+                    gbwt_builder.finish();
+
+                    std::stringstream gbwt_stream;
+                    gbwt_builder.index.serialize(gbwt_stream);
+
+                    unique_ptr<gbwt::GBWT> haplotype_index(new gbwt::GBWT());
+                    
+                    haplotype_index->load(gbwt_stream);
+                    REQUIRE(haplotype_index->bidirectional());
+
+                    transcriptome.add_transcripts(transcript_stream, *haplotype_index);
+                    REQUIRE(transcriptome.size() == 4);
+
+                    auto int_transcript_paths = transcript_paths_to_int_vectors(transcriptome.transcript_paths());
+
+                    REQUIRE(int_transcript_paths.front() == vector<uint64_t>({4, 6, 10, 14, 22}));
+                    REQUIRE(int_transcript_paths.at(1) == vector<uint64_t>({4, 8, 10, 14, 22}));
+                    REQUIRE(int_transcript_paths.at(2) == vector<uint64_t>({23, 11, 7, 5}));
+                    REQUIRE(int_transcript_paths.back() == vector<uint64_t>({23, 11, 9, 5}));
+                }
             }
 
             SECTION("Transcriptome can add splice-junctions and update GBWT threads") {
@@ -197,26 +259,18 @@ namespace vg {
                 gbwt::vector_type gbwt_thread_2(5);
    
                 gbwt_thread_1[0] = gbwt::Node::encode(1, false);
-                gbwt_thread_1[1] = gbwt::Node::encode(2, false);
+                gbwt_thread_1[1] = gbwt::Node::encode(3, false);
                 gbwt_thread_1[2] = gbwt::Node::encode(4, false);
                 gbwt_thread_1[3] = gbwt::Node::encode(6, false);
 
                 gbwt_thread_2[0] = gbwt::Node::encode(1, false);
-                gbwt_thread_2[1] = gbwt::Node::encode(2, false);
+                gbwt_thread_2[1] = gbwt::Node::encode(3, false);
                 gbwt_thread_2[2] = gbwt::Node::encode(4, false);
                 gbwt_thread_2[3] = gbwt::Node::encode(5, false);
                 gbwt_thread_2[4] = gbwt::Node::encode(6, false);
 
-                gbwt::vector_type gbwt_thread_3 = gbwt_thread_1;
-                gbwt_thread_3[1] = gbwt::Node::encode(3, false);
-
-                gbwt::vector_type gbwt_thread_4 = gbwt_thread_2;
-                gbwt_thread_4[1] = gbwt::Node::encode(3, false);
-
                 gbwt_builder.insert(gbwt_thread_1, true);
                 gbwt_builder.insert(gbwt_thread_2, true);
-                gbwt_builder.insert(gbwt_thread_3, true);
-                gbwt_builder.insert(gbwt_thread_4, true);
 
                 gbwt_builder.finish();
 
@@ -247,14 +301,7 @@ namespace vg {
                 SECTION("Transcriptome can project transcripts onto GBWT threads") {
 
                     transcriptome.add_transcripts(transcript_stream, *haplotype_index);
-                    REQUIRE(transcriptome.size() == 4);
-
-                    auto int_transcript_paths = transcriptPathsToIntVectors(transcriptome.transcript_paths());
-
-                    REQUIRE(int_transcript_paths.front() == vector<uint64_t>({20, 4, 8, 16, 22}));
-                    REQUIRE(int_transcript_paths.at(1) == vector<uint64_t>({20, 6, 8, 16, 22}));
-                    REQUIRE(int_transcript_paths.at(2) == vector<uint64_t>({23, 9, 5, 21}));
-                    REQUIRE(int_transcript_paths.back() == vector<uint64_t>({23, 9, 7, 21}));
+                    REQUIRE(transcriptome.size() == 2);
                 }
             }
         }

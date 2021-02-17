@@ -229,14 +229,14 @@ int32_t main_rna(int32_t argc, char** argv) {
     double time_parsing_start = gcsa::readTimer();
     if (show_progress) { cerr << "[vg rna] Parsing graph file ..." << endl; }
 
-    unique_ptr<MutablePathDeletableHandleGraph> splice_graph;
+    unique_ptr<MutablePathDeletableHandleGraph> splice_graph(nullptr);
 
     // Load variation graph.
     get_input_file(optind, argc, argv, [&](istream& in) {
         splice_graph = move(vg::io::VPKG::load_one<MutablePathDeletableHandleGraph>(in));
     });
 
-    if (splice_graph) {
+    if (splice_graph == nullptr) {
         cerr << "[transcriptome] ERROR: Could not load graph." << endl;
         exit(1);
     }
