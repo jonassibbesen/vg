@@ -17,19 +17,9 @@ using namespace std;
 //#define transcriptome_debug
 
 
-Transcriptome::Transcriptome(const string & graph_filename, const bool show_progress) {
-
-    // Load variation graph.
-    get_input_file(graph_filename, [&](istream& in) {
-        _splice_graph = vg::io::VPKG::load_one<MutablePathDeletableHandleGraph>(in);
-    });
+Transcriptome::Transcriptome(unique_ptr<MutablePathDeletableHandleGraph> splice_graph_in) : _splice_graph(move(splice_graph_in)) {
 
     _splice_graph_node_updated = false;
-
-    if (!_splice_graph) {
-        cerr << "[transcriptome] ERROR: Could not load graph." << endl;
-        exit(1);
-    }
 }
 
 int32_t Transcriptome::add_intron_splice_junctions(istream & intron_stream, unique_ptr<gbwt::GBWT> & haplotype_index) {

@@ -128,7 +128,7 @@ class Transcriptome {
 
     public:
 
-        Transcriptome(const string &, const bool);   
+        Transcriptome(unique_ptr<MutablePathDeletableHandleGraph> splice_graph_in);   
 
         /// Number of threads used for transcript path construction. 
         int32_t num_threads = 1;
