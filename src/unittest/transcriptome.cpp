@@ -16,17 +16,24 @@
 namespace vg {
     namespace unittest {
 
-        vector<uint64_t> handleVectorToIntVector(const vector<handle_t> & handle_vector) {
+        vector<vector<uint64_t> > transcriptPathsToIntVectors(const vector<CompletedTranscriptPath> & transcript_paths) {
 
-            vector<uint64_t> int_vector;
-            int_vector.reserve(handle_vector.size());
+            vector<vector<uint64_t> > int_vectors;
+            int_vectors.reserve(transcript_paths.size());
 
-            for (auto & handle: handle_vector) {
+            for (auto & transcript_path: transcript_paths) {
 
-                int_vector.emplace_back(bdsg::as_integer(handle));
+                int_vectors.emplace_back(vector<uint64_t>());
+                int_vectors.back().reserve(transcript_path.path.size());
+
+                for (auto & handle: transcript_path.path) {
+
+                    int_vectors.back().emplace_back(bdsg::as_integer(handle));
+                }
             }
 
-            return int_vector;
+            sort(int_vectors.begin(), int_vectors.end());
+            return int_vectors;
         }
 
         TEST_CASE("Transcriptome can add splice-junctions and project transcripts", "[transcriptome]") {
@@ -116,8 +123,10 @@ namespace vg {
                     transcriptome.add_transcripts(transcript_stream, *empty_haplotype_index);
                     REQUIRE(transcriptome.size() == 2);
 
-                    REQUIRE(handleVectorToIntVector(transcriptome.transcript_paths().front().path) == vector<uint64_t>({20, 4, 8, 16, 22}));
-                    REQUIRE(handleVectorToIntVector(transcriptome.transcript_paths().back().path) == vector<uint64_t>({23, 9, 5, 21}));
+                    auto int_transcript_paths = transcriptPathsToIntVectors(transcriptome.transcript_paths());
+
+                    REQUIRE(int_transcript_paths.front() == vector<uint64_t>({20, 4, 8, 16, 22}));
+                    REQUIRE(int_transcript_paths.back() == vector<uint64_t>({23, 9, 5, 21}));
                 }
 
                 SECTION("Transcriptome can project transcripts onto all embedded paths") {
@@ -127,10 +136,12 @@ namespace vg {
                     transcriptome.add_transcripts(transcript_stream, *empty_haplotype_index);
                     REQUIRE(transcriptome.size() == 4);
 
-                    REQUIRE(handleVectorToIntVector(transcriptome.transcript_paths().front().path) == vector<uint64_t>({20, 4, 8, 16, 22}));
-                    REQUIRE(handleVectorToIntVector(transcriptome.transcript_paths().at(1).path) == vector<uint64_t>({20, 6, 8, 16, 22}));
-                    REQUIRE(handleVectorToIntVector(transcriptome.transcript_paths().at(2).path) == vector<uint64_t>({23, 9, 5, 21}));
-                    REQUIRE(handleVectorToIntVector(transcriptome.transcript_paths().back().path) == vector<uint64_t>({23, 9, 7, 21}));
+                    auto int_transcript_paths = transcriptPathsToIntVectors(transcriptome.transcript_paths());
+
+                    REQUIRE(int_transcript_paths.front() == vector<uint64_t>({20, 4, 8, 16, 22}));
+                    REQUIRE(int_transcript_paths.at(1) == vector<uint64_t>({20, 6, 8, 16, 22}));
+                    REQUIRE(int_transcript_paths.at(2) == vector<uint64_t>({23, 9, 5, 21}));
+                    REQUIRE(int_transcript_paths.back() == vector<uint64_t>({23, 9, 7, 21}));
                 }
 
                 SECTION("Transcriptome can project transcripts onto all embedded paths and not collapse redundant paths") {
@@ -141,12 +152,14 @@ namespace vg {
                     transcriptome.add_transcripts(transcript_stream, *empty_haplotype_index);
                     REQUIRE(transcriptome.size() == 6);
 
-                    REQUIRE(handleVectorToIntVector(transcriptome.transcript_paths().front().path) == vector<uint64_t>({20, 4, 8, 16, 22}));
-                    REQUIRE(handleVectorToIntVector(transcriptome.transcript_paths().at(1).path) == vector<uint64_t>({20, 4, 8, 16, 22}));
-                    REQUIRE(handleVectorToIntVector(transcriptome.transcript_paths().at(2).path) == vector<uint64_t>({20, 6, 8, 16, 22}));
-                    REQUIRE(handleVectorToIntVector(transcriptome.transcript_paths().at(3).path) == vector<uint64_t>({23, 9, 5, 21}));
-                    REQUIRE(handleVectorToIntVector(transcriptome.transcript_paths().at(4).path) == vector<uint64_t>({23, 9, 5, 21}));
-                    REQUIRE(handleVectorToIntVector(transcriptome.transcript_paths().back().path) == vector<uint64_t>({23, 9, 7, 21}));
+                    auto int_transcript_paths = transcriptPathsToIntVectors(transcriptome.transcript_paths());
+
+                    REQUIRE(int_transcript_paths.front() == vector<uint64_t>({20, 4, 8, 16, 22}));
+                    REQUIRE(int_transcript_paths.at(1) == vector<uint64_t>({20, 4, 8, 16, 22}));
+                    REQUIRE(int_transcript_paths.at(2) == vector<uint64_t>({20, 6, 8, 16, 22}));
+                    REQUIRE(int_transcript_paths.at(3) == vector<uint64_t>({23, 9, 5, 21}));
+                    REQUIRE(int_transcript_paths.at(4) == vector<uint64_t>({23, 9, 5, 21}));
+                    REQUIRE(int_transcript_paths.back() == vector<uint64_t>({23, 9, 7, 21}));
                 }
 
                 SECTION("Transcriptome can add transcript paths to graph") {
@@ -236,10 +249,12 @@ namespace vg {
                     transcriptome.add_transcripts(transcript_stream, *haplotype_index);
                     REQUIRE(transcriptome.size() == 4);
 
-                    REQUIRE(handleVectorToIntVector(transcriptome.transcript_paths().front().path) == vector<uint64_t>({20, 4, 8, 16, 22}));
-                    REQUIRE(handleVectorToIntVector(transcriptome.transcript_paths().at(1).path) == vector<uint64_t>({20, 6, 8, 16, 22}));
-                    REQUIRE(handleVectorToIntVector(transcriptome.transcript_paths().at(2).path) == vector<uint64_t>({23, 9, 5, 21}));
-                    REQUIRE(handleVectorToIntVector(transcriptome.transcript_paths().back().path) == vector<uint64_t>({23, 9, 7, 21}));
+                    auto int_transcript_paths = transcriptPathsToIntVectors(transcriptome.transcript_paths());
+
+                    REQUIRE(int_transcript_paths.front() == vector<uint64_t>({20, 4, 8, 16, 22}));
+                    REQUIRE(int_transcript_paths.at(1) == vector<uint64_t>({20, 6, 8, 16, 22}));
+                    REQUIRE(int_transcript_paths.at(2) == vector<uint64_t>({23, 9, 5, 21}));
+                    REQUIRE(int_transcript_paths.back() == vector<uint64_t>({23, 9, 7, 21}));
                 }
             }
         }

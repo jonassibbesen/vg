@@ -1759,10 +1759,7 @@ void Transcriptome::write_splice_graph(ostream * graph_ostream) const {
 
     vg::io::save_handle_graph(_splice_graph.get(), *graph_ostream);
 }
-    
+
 }
-
-
-
 
 
